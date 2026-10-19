@@ -1,0 +1,39 @@
+{
+  "name": "common-ground",
+  "version": "1.0.0",
+  "description": "An agent that plans a night out your whole group will enjoy, using Qloo's taste graph to find where everyone's tastes overlap.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.18"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:api": "tsx watch server/dev-server.ts",
+    "dev:web": "vite",
+    "build": "vite build",
+    "start": "npm run build && tsx server/dev-server.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "smoke:live": "tsx scripts/smoke-live.ts",
+    "eval": "tsx scripts/eval.ts",
+    "mcp": "tsx server/mcp.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.131.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "4.7.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vite": "6.4.4",
+    "vitest": "3.2.7"
+  }
+}

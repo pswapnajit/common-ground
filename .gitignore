@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+.vercel/
+.DS_Store
+coverage/
+# Live Qloo responses must never be committed (developer guide rule)
+.cache/
+scripts/out/
