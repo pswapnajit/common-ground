@@ -1,0 +1,19 @@
+# Alternative host: one Node web service running the same server as `npm start`.
+# Render's free plan sleeps when idle, so the first request can take ~1 minute; Vercel is the recommended host.
+services:
+  - type: web
+    name: common-ground
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npx tsx server/dev-server.ts
+    healthCheckPath: /api/health
+    envVars:
+      - key: QLOO_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: QLOO_BASE_URL
+        value: https://hackathon.api.qloo.com
+      - key: LLM_MODEL
+        value: claude-opus-5-5
