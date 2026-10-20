@@ -109,6 +109,7 @@ a {
   font-family: var(--serif);
   font-size: 24px;
   letter-spacing: 0.2px;
+  white-space: nowrap;
 }
 .brand-overlap {
   fill: var(--ink);
@@ -1429,7 +1430,10 @@ a {
     padding: 10px 16px;
   }
   .brand span {
-    font-size: 21px;
+    font-size: 19px;
+  }
+  .topbar-right {
+    gap: 4px;
   }
   .pill.neutral {
     display: none;
