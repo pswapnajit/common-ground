@@ -162,7 +162,9 @@ function insights(q: URLSearchParams): TransportResponse {
   }
 
   const urn = type === "urn:entity:locality" ? "urn:entity:destination" : type;
-  if (!/^urn:entity:/.test(urn)) return bad(403, `You do not have permission to access ${type}`);
+  // Same list the hackathon guide documents; anything else is a 403 there too.
+  const supported = ["artist", "book", "brand", "destination", "movie", "person", "place", "podcast", "tv_show", "videogame", "video_game"].map((t) => `urn:entity:${t}`);
+  if (!supported.includes(urn)) return bad(403, `You do not have permission to access ${type}`);
   let pool = MOCK_ENTITIES.filter((e) => e.urn === urn);
 
   const filterTags = list(q.get("filter.tags"));

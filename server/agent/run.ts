@@ -9,7 +9,7 @@ import { ledgerWeights } from "../engine/fairness.js";
 import { qlooFor } from "../qloo/index.js";
 import { pctPhrase } from "./describe.js";
 import { SYSTEM_PROMPT, firstMessage, followUpMessage } from "./prompt.js";
-import { LlmUnavailableError, providerFor, type ToolCall } from "./providers/index.js";
+import { LlmUnavailableError, providerFor, type LlmProvider, type ToolCall } from "./providers/index.js";
 import { SLOT_KINDS, TOOL_SPECS, autoPlan, executeTool, findTags, makeContext, readGroupTaste, runPlanSlot, type PlanSlotArgs, type RunContext } from "./tools.js";
 
 const DEADLINE_MS = 50_000;
@@ -143,10 +143,15 @@ async function executeAll(ctx: RunContext, calls: ToolCall[]) {
   return calls.map((c) => results.get(c.id)!);
 }
 
-export async function runPlan(rawBody: PlanRequestBody, config: AppConfig, emit: (e: PlanEvent) => void): Promise<void> {
+export interface RunDeps {
+  /** Overrides the configured model provider (tests use a scripted one). Pass null to force the rule-based planner. */
+  provider?: LlmProvider | null;
+}
+
+export async function runPlan(rawBody: PlanRequestBody, config: AppConfig, emit: (e: PlanEvent) => void, deps: RunDeps = {}): Promise<void> {
   const req = sanitize(rawBody);
   const qloo = qlooFor(config, (receipt) => emit({ type: "qloo", receipt }));
-  const provider = providerFor(config);
+  const provider = deps.provider === undefined ? providerFor(config) : deps.provider ?? undefined;
   const personIds = req.group.filter((p) => p.likes.length).map((p) => p.id);
   const weights = ledgerWeights(personIds, req.ledger);
   const located = req.slots.some((s) => LOCATED_SLOTS.includes(s));

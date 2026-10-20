@@ -81,28 +81,36 @@ export function compactTaste(t: GroupTaste, nameOf: NameOf) {
   };
 }
 
+/** "top 20%", "top half", "#1" for a percentile. */
+export function topPhrase(p: number): string {
+  if (p >= 0.995) return "#1";
+  const top = Math.max(1, Math.round((1 - p) * 100));
+  return top === 50 ? "top half" : `top ${top}%`;
+}
+
 /** One or two sentences on why a pick works, from Qloo facts only. */
 export function whyText(c: ScoredCandidate, r: SlotResult, nameOf: NameOf): string {
   const people = Object.keys(c.percentiles);
-  const strongest = [...people].sort((a, b) => c.percentiles[b] - c.percentiles[a]);
-  const driver = c.drivers[0];
   const parts: string[] = [];
-  if (c.fair && people.length > 1) {
-    parts.push(`It lands in everyone's ${pctPhrase(c.minPercentile).replace("their ", "")} or better out of ${r.poolSize} options Qloo scored.`);
-  } else if (people.length > 1) {
-    parts.push(`It's the best compromise Qloo found: ${people.map((p) => `${nameOf(p)} ${pctPhrase(c.percentiles[p])}`).join(", ")}.`);
-  }
-  if (driver) {
-    const second = c.drivers.find((d) => d.personId !== driver.personId);
+  if (people.length > 1) {
     parts.push(
-      second
-        ? `Qloo links it to ${nameOf(driver.personId)}'s love of ${driver.entityName} and ${nameOf(second.personId)}'s ${second.entityName}.`
-        : `Qloo links it most to ${nameOf(driver.personId)}'s love of ${driver.entityName}.`,
+      c.fair
+        ? `It ranks in the ${topPhrase(c.minPercentile)} or better for every one of you, out of ${r.poolSize} options Qloo scored for this group.`
+        : `It's the best compromise Qloo found: ${people.map((p) => `${nameOf(p)} ${topPhrase(c.percentiles[p])}`).join(", ")}.`,
     );
-  } else if (strongest.length) {
-    parts.push(`It fits ${nameOf(strongest[0])} best.`);
+  } else {
+    parts.push(`It's in your ${topPhrase(c.percentiles[people[0]] ?? 0)} of ${r.poolSize} options Qloo scored.`);
   }
-  if (c.matchedTags.length) parts.push(`It carries tags the group shares: ${c.matchedTags.map((t) => t.name).slice(0, 3).join(", ")}.`);
+  const [first, second] = c.drivers;
+  if (first && second && second.personId !== first.personId) {
+    parts.push(`Qloo ties it most to ${nameOf(first.personId)}'s love of ${first.entityName} and ${nameOf(second.personId)}'s ${second.entityName}.`);
+  } else if (first) {
+    parts.push(`Qloo ties it most to ${nameOf(first.personId)}'s love of ${first.entityName}.`);
+  }
+  if (c.matchedTags.length) {
+    const names = c.matchedTags.map((t) => t.name).slice(0, 3);
+    parts.push(`It also carries ${names.length === 1 ? "a tag" : "tags"} you share: ${names.join(", ")}.`);
+  }
   return parts.join(" ");
 }
 
@@ -112,7 +120,7 @@ export function tradeoffText(c: ScoredCandidate, r: SlotResult, nameOf: NameOf):
     .sort((a, b) => a[1] - b[1]);
   if (!losers.length) return undefined;
   const [pid, p] = losers[0];
-  return `${nameOf(pid)} gives up the most: their own #1 was ${r.personalTop[pid].name}, and this sits in their ${pctPhrase(p)}.`;
+  return `${nameOf(pid)} gives up the most: their own #1 here was ${r.personalTop[pid].name}, and this one is in their ${topPhrase(p)}.`;
 }
 
 export function slotLabel(slot: SlotKind): string {

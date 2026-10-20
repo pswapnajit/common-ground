@@ -190,12 +190,13 @@ export async function planSlot(qloo: Qloo, input: PlanSlotInput): Promise<SlotRe
       const total = personIds.reduce((s, id) => s + (r.item.percentiles[id] ?? 0), 0) || 1;
       attribution = Object.fromEntries(personIds.map((id) => [id, Math.round(((r.item.percentiles[id] ?? 0) / total) * 100) / 100]));
     }
-    const drivers = [...explain.entries()]
+    // Strongest contributing favourite per person first, so the credit isn't one person's list.
+    const ranked = [...explain.entries()]
       .filter(([eid]) => owners.has(eid))
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 4)
-      .flatMap(([eid, w]) => owners.get(eid)!.map((pid) => ({ personId: pid, entityId: eid, entityName: likeNames.get(eid) ?? eid, weight: w })))
-      .slice(0, 4);
+      .flatMap(([eid, w]) => owners.get(eid)!.map((pid) => ({ personId: pid, entityId: eid, entityName: likeNames.get(eid) ?? eid, weight: w })));
+    const firstEach = personIds.map((pid) => ranked.find((d) => d.personId === pid)).filter((d): d is (typeof ranked)[number] => Boolean(d));
+    const drivers = [...firstEach.sort((a, b) => b.weight - a.weight), ...ranked.filter((d) => !firstEach.includes(d))].slice(0, 4);
     const matchedTags = (r.item.card.tags ?? [])
       .map((t) => sharedTagIds.get(t.id) ?? sharedTagNames.get(t.name.toLowerCase()))
       .filter((t): t is TasteTag => Boolean(t))
