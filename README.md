@@ -80,7 +80,7 @@ filter.results.tags     + feature.explainability      the shared shortlist,
 | `plan_slot` | Runs the candidate → per-person scoring → fair-ranking pipeline for one item (dinner, drinks, movie, series, music, book, weekend trip), with filters for tags, price, content rating and year. |
 | `finalize_plan` | Publishes the plan. The server rejects any pick that isn't on the scored shortlist, so the model can't invent a restaurant. |
 
-The default model is Claude Opus 5.5 through the official Anthropic SDK (adaptive thinking, `effort: low` for speed, prompt caching, server-side refusal fallback). Any OpenAI-compatible model works too. If no model is configured, or the model API fails mid-run, a rule-based planner calls the same tools so the demo keeps working.
+The default model is Claude Opus 5.5 through the official Anthropic SDK (adaptive thinking, `effort: low` for speed, prompt caching, server-side refusal fallback). Any OpenAI-compatible model works too. If no model is configured, or the model API fails mid-run, a rule-based planner calls the same tools so the demo keeps working: it maps common requests (cheaper, vegetarian, rooftop, outdoor seating, live music, no horror, kid-friendly) to Qloo filters and says which ones it applied. The top bar always shows which mode is running.
 
 ## Qloo endpoints used
 
@@ -88,12 +88,18 @@ The default model is Claude Opus 5.5 through the official Anthropic SDK (adaptiv
 |---|---|---|
 | `GET /search` | `query`, `types` | Typeahead for favourites |
 | `GET /v2/tags` | `filter.query`, `feature.semantic_search` | Category tags (restaurant, bar) and constraints from notes |
-| `GET /v2/insights` | `filter.type=urn:entity:*`, `signal.interests.entities`, `feature.explainability`, `filter.tags`, `filter.exclude.tags`, `filter.location.query`, `filter.price_level.*`, `filter.content_rating`, `filter.exclude.entities` | Candidate shortlists |
+| `GET /v2/insights` | `filter.type=urn:entity:*`, `signal.interests.entities`, `feature.explainability`, `filter.tags` + `operator.filter.tags`, `filter.exclude.tags`, `filter.location.query` + `filter.location.radius`, `filter.price_level.*`, `filter.content_rating`, `filter.exclude.entities` | Candidate shortlists |
 | `GET /v2/insights` | `filter.results.entities` + one person's signals | Each person's score for every shortlisted option |
-| `GET /v2/insights` | `filter.type=urn:tag`, `diversify.by=subtype`, `filter.results.tags` | Taste fingerprints and the person × tag matrix |
+| `GET /v2/insights` | `filter.type=urn:tag`, `filter.parents.types`, `diversify.by=subtype`, `filter.results.tags` | Taste fingerprints and the person × tag matrix |
 | `GET /v2/analysis/compare` | `a.signal.interests.entities`, `b.signal.interests.entities` | Shared tags for two-person groups |
 
-A typical two-item plan for three people makes about 25 Qloo requests, run in parallel where possible and cached in server memory.
+A two-item plan for three people makes about 20 Qloo requests, run in parallel where possible and cached in server memory. A fresh plan takes roughly 10 to 20 seconds, most of it spent scoring film and TV shortlists; repeat plans come straight from the cache.
+
+### What the live data taught us
+
+- **Taste analysis needs scoping.** `filter.type=urn:tag` on its own returns place attributes ("Three Star", "Inexpensive") all scored 1.0. Adding `filter.parents.types` for films, TV, music and books gives descriptors people recognise ("Confessional", "Darkly Humorous", "Horror Aficionados").
+- **Localities are padded.** `filter.location.query=Brooklyn` also returns Lower Manhattan, because Qloo widens a locality's edge by default. The planner asks with `filter.location.radius=0` first and widens only when the area is sparse, and it says so.
+- **"Restaurant" is a broad tag.** It covers cafes, bakeries, markets and even a shopping mall. Dinner shortlists OR together 36 cuisine genres, and every place is checked against its `primary_genre` (closed places are dropped too).
 
 ## Data handling
 

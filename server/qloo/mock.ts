@@ -63,6 +63,21 @@ function entityJson(e: MockEntity, query?: Record<string, unknown>) {
     props.price_level = e.place.price;
     props.business_rating = Math.round((3.8 + stableNoise(e.id) * 1.0) * 10) / 10;
     props.geocode = { neighborhood: e.place.neighborhood, city: "New York", country_code: "US" };
+    const cuisine = e.tags.find((t) => t.startsWith("urn:tag:genre:place:restaurant:"))?.split(":").pop();
+    const kind =
+      e.place.category === "bar"
+        ? e.tags.includes("urn:tag:category:place:wine_bar")
+          ? "wine_bar"
+          : e.tags.includes("urn:tag:category:place:cocktail_bar")
+            ? "cocktail_bar"
+            : "bar"
+        : e.place.category === "cafe"
+          ? "cafe"
+          : (cuisine ?? "");
+    props.primary_genre = {
+      id: `urn:tag:genre:place:restaurant${kind ? `:${kind}` : ""}`,
+      name: kind ? `${kind.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase())}${e.place.category === "restaurant" ? " restaurant" : ""}` : "Restaurant",
+    };
   }
   if (e.country) props.geocode = { country: e.country };
   return {

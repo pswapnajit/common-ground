@@ -95,7 +95,7 @@ export function whyText(c: ScoredCandidate, r: SlotResult, nameOf: NameOf): stri
   if (people.length > 1) {
     parts.push(
       c.fair
-        ? `It ranks in the ${topPhrase(c.minPercentile)} or better for every one of you, out of ${r.poolSize} options Qloo scored for this group.`
+        ? `It's in ${people.length === 2 ? "both" : "each"} of your ${topPhrase(c.minPercentile)} or better, out of ${r.poolSize} options Qloo scored for this group.`
         : `It's the best compromise Qloo found: ${people.map((p) => `${nameOf(p)} ${topPhrase(c.percentiles[p])}`).join(", ")}.`,
     );
   } else {
@@ -120,7 +120,14 @@ export function tradeoffText(c: ScoredCandidate, r: SlotResult, nameOf: NameOf):
     .sort((a, b) => a[1] - b[1]);
   if (!losers.length) return undefined;
   const [pid, p] = losers[0];
+  // Nobody really gives anything up if the pick is near the top of every list.
+  if (p >= 0.85) return undefined;
   return `${nameOf(pid)} gives up the most: their own #1 here was ${r.personalTop[pid].name}, and this one is in their ${topPhrase(p)}.`;
+}
+
+/** "both of you", "all 4 of you". */
+export function groupWord(n: number): string {
+  return n === 2 ? "both of you" : `all ${n} of you`;
 }
 
 export function slotLabel(slot: SlotKind): string {

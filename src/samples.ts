@@ -52,9 +52,9 @@ export const SAMPLES: SampleGroup[] = [
   {
     id: "team",
     title: "Team dinner, five people",
-    blurb: "Five coworkers from four countries. One dinner that nobody secretly hates.",
+    blurb: "Five coworkers, five very different playlists. One dinner in the East Village that nobody secretly hates.",
     slots: ["dinner"],
-    location: "Manhattan",
+    location: "East Village",
     notes: "Big group, mid-priced.",
     people: [
       { name: "Dana", likes: [["The Office", "tv_show"], ["Beyoncé", "artist"], ["Barbie", "movie"]] },

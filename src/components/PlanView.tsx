@@ -35,6 +35,10 @@ function FitBars({ c, people, compact }: { c: ScoredCandidate; people: Person[];
 function Credit({ c, people }: { c: ScoredCandidate; people: Person[] }) {
   const parts = people.map((p) => ({ p, v: c.attribution[p.id] ?? 0 })).filter((x) => x.v > 0.01);
   if (!parts.length) return null;
+  const values = parts.map((x) => x.v);
+  if (parts.length === people.length && Math.max(...values) - Math.min(...values) < 0.12) {
+    return <p className="muted small credit-even">Qloo's explainability gives everyone's favourites a similar share here: it isn't one person's pick.</p>;
+  }
   return (
     <div className="credit">
       <div className="credit-bar" aria-hidden>

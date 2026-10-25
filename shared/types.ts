@@ -28,6 +28,11 @@ export interface EntityCard {
   neighborhood?: string;
   city?: string;
   rating?: number;
+  /** Qloo primary genre, e.g. "Japanese restaurant" (places). */
+  genre?: string;
+  genreId?: string;
+  /** Qloo marks some places as permanently closed. */
+  closed?: boolean;
   /** Up to ~8 readable tags from Qloo. */
   tags?: TagRef[];
   description?: string;

@@ -56,7 +56,7 @@ Endpoints used in one product flow: `/search` (typeahead), `/v2/tags` (category 
 
 ### How we built it
 
-- **Agent:** a tool-use loop on the Anthropic SDK with Claude Opus 5.5. Four tools: `read_group_taste`, `find_qloo_tags`, `plan_slot` and `finalize_plan`. The server checks every pick against the scored shortlist, so the model can't invent a restaurant. The model provider is pluggable (any OpenAI-compatible API works), and a rule-based planner runs the same tools if no model is available.
+- **Agent:** a tool-use loop on the Anthropic SDK with Claude Opus 5.5. Four tools: `read_group_taste`, `find_qloo_tags`, `plan_slot` and `finalize_plan`. The server checks every pick against the scored shortlist, so the model can't invent a restaurant. The model provider is pluggable (any OpenAI-compatible API works). If the model is unavailable, a rule-based planner runs the same tools, so the demo never breaks; the top bar shows which mode is running.
 - **Fairness:** Qloo affinity scores from separate requests aren't on a common scale, so each person's scores are turned into percentiles within the shared shortlist. Options below a misery floor for anyone are dropped (the "average without misery" strategy from group-recommender research). The rest are ranked by a weighted geometric mean, so one unhappy person counts for more than a plain average would allow.
 - **App:** React and Vite in the browser, web-standard request handlers on Vercel functions, results streamed to the page as the agent works.
 - **Development without a key:** a synthetic mock of the Qloo API answers the same requests in the same response shapes, so we could build and test before our key arrived. Switching to live is one environment variable.
@@ -66,17 +66,18 @@ Endpoints used in one product flow: `/search` (typeahead), `/v2/tags` (category 
 
 - **Comparing people fairly.** Raw affinity scores from different requests can't be compared, so averaging them would quietly favour whoever's request happened to score higher. Rank-normalising within one shared shortlist fixed that.
 - **Keeping the agent honest.** Language models like to add detail. We limited the agent to facts the tools return (percentiles, credit, shared tags) and made the server reject picks that weren't scored.
-- **Speed.** A plan for three people takes about 25 Qloo requests. They run in parallel, identical requests are de-duplicated, and results are cached in server memory, so a plan comes back in seconds.
+- **Real data is messier than the docs.** Taste analysis without `filter.parents.types` returned place attributes ("Three Star", "Inexpensive") all scored 1.0. A search in "Brooklyn" also returned Lower Manhattan, because Qloo pads a locality's edge unless `filter.location.radius=0`. And the "restaurant" tag covered cafes, bakeries and a shopping mall, so dinner now ORs 36 cuisine genres and checks each place's `primary_genre`.
+- **Speed.** A plan for three people takes about 20 Qloo requests. They run in parallel, identical requests are de-duplicated, and results are cached in server memory. Scoring film shortlists is the slowest part, so those shortlists are capped at 32 options; a fresh plan takes roughly 10 to 20 seconds.
 
 ### Accomplishments that we're proud of
 
 - A plan that explains itself: who each pick is for, who gives up what, and the Qloo request behind every number.
-- Picks that hold up against the obvious alternative. For the sample groups, the most popular option often leaves one person in the bottom third of their own list; the fair pick doesn't.
+- Picks that hold up against the obvious alternative. In the roommates sample, the most popular film on the shortlist, Joker, is Marco's number one but sits in the bottom 7% for Priya and the bottom 3% for Jun. The fair pick, Little Women, is in all three people's top half.
 - The fairness ledger. Groups make plans together again and again, and the same person often ends up compromising. The ledger evens that out over time.
 
 ### What we learned
 
-Taste overlap is rarely where you'd look first. The horror fan and the rom-com fan in our sample group don't share a genre, but Qloo finds that they share a taste for certain kinds of places and stories. That's the part of the problem a taste graph solves and a chatbot can't.
+Taste overlap is rarely where you'd look first. The horror fan and the rom-com fan in our sample group don't share a genre, but Qloo's taste analysis finds that all three roommates lean towards stories about inner struggle and self-reflection, and it scores a vegetarian place in Williamsburg in all three people's top 18% for dinner. That's the part of the problem a taste graph solves and a chatbot can't.
 
 ### What's next
 

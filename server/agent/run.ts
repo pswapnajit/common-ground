@@ -7,7 +7,7 @@ import { LOCATED_SLOTS, SLOT_LABELS } from "../../shared/types.js";
 import type { AppConfig } from "../config.js";
 import { ledgerWeights } from "../engine/fairness.js";
 import { qlooFor } from "../qloo/index.js";
-import { pctPhrase } from "./describe.js";
+import { groupWord, topPhrase } from "./describe.js";
 import { SYSTEM_PROMPT, firstMessage, followUpMessage } from "./prompt.js";
 import { LlmUnavailableError, providerFor, type LlmProvider, type ToolCall } from "./providers/index.js";
 import { SLOT_KINDS, TOOL_SPECS, autoPlan, executeTool, findTags, makeContext, readGroupTaste, runPlanSlot, type PlanSlotArgs, type RunContext } from "./tools.js";
@@ -74,7 +74,7 @@ const RULES: Array<{ test: RegExp; c: Constraint }> = [
   { test: /\b(kids?|children|family[- ]friendly|all ages)\b/i, c: { slots: ["movie"], mode: "ratings", value: ["G", "PG"] } },
 ];
 
-async function constraintArgs(ctx: RunContext, text: string): Promise<Partial<Record<SlotKind, Partial<PlanSlotArgs>>>> {
+async function constraintArgs(ctx: RunContext, text: string, applied: string[] = []): Promise<Partial<Record<SlotKind, Partial<PlanSlotArgs>>>> {
   const out: Partial<Record<SlotKind, Partial<PlanSlotArgs>>> = {};
   const get = (s: SlotKind) => (out[s] ??= { include_tag_ids: [], exclude_tag_ids: [] });
   for (const { test, c } of RULES) {
@@ -83,27 +83,32 @@ async function constraintArgs(ctx: RunContext, text: string): Promise<Partial<Re
     if (!slots.length) continue;
     if (c.mode === "price_max" || c.mode === "price_min") {
       for (const s of slots) get(s)[c.mode === "price_max" ? "max_price_level" : "min_price_level"] = c.value as number;
+      applied.push(c.mode === "price_max" ? `price up to ${"$".repeat(c.value as number)}` : `price from ${"$".repeat(c.value as number)}`);
       continue;
     }
     if (c.mode === "ratings") {
       for (const s of slots) get(s).content_ratings = c.value as string[];
+      applied.push(`ratings ${(c.value as string[]).join("/")}`);
       continue;
     }
-    for (const s of slots) {
-      const tags = await findTags(ctx, c.query!, s).catch(() => []);
+    const found = await Promise.all(slots.map((s) => findTags(ctx, c.query!, s).catch(() => [])));
+    slots.forEach((s, i) => {
       const word = c.query!.split(" ")[0].slice(0, 5).toLowerCase();
-      const tag = tags.find((t) => t.name.toLowerCase().includes(word));
-      if (!tag) continue;
+      const tag = found[i].find((t) => t.name.toLowerCase().includes(word));
+      if (!tag) return;
       const args = get(s);
       (c.mode === "include" ? args.include_tag_ids! : args.exclude_tag_ids!).push(tag.id);
-    }
+      const label = `${c.mode === "include" ? "only" : "no"} "${tag.name}"`;
+      if (!applied.includes(label)) applied.push(label);
+    });
   }
   return out;
 }
 
-async function runRuleBased(ctx: RunContext, constraintText: string) {
-  await readGroupTaste(ctx).catch(() => undefined);
-  const extra = await constraintArgs(ctx, constraintText);
+async function runRuleBased(ctx: RunContext, constraintText: string, followUp?: string) {
+  const applied: string[] = [];
+  // Taste analysis and tag lookups don't depend on each other.
+  const [, extra] = await Promise.all([readGroupTaste(ctx).catch(() => undefined), constraintArgs(ctx, constraintText, applied)]);
   await Promise.all(
     ctx.slots.map((slot) =>
       runPlanSlot(ctx, { slot, location: ctx.location ?? null, ...extra[slot] }).catch((error) =>
@@ -117,10 +122,16 @@ async function runRuleBased(ctx: RunContext, constraintText: string) {
     const lows = people
       .map((p) => ({ p, worst: Math.min(...plan.items.map((i) => i.pick.percentiles[p.id] ?? 0)) }))
       .sort((a, b) => a.worst - b.worst);
-    const text =
-      people.length > 1
-        ? `Here's a plan built from Qloo's scores for all ${people.length} of you. The pick that asks the most of anyone still sits in ${lows[0].p.name}'s ${pctPhrase(lows[0].worst)}. Tell me what to change, like "cheaper" or "no horror".`
-        : `Here's a plan from Qloo's strongest matches for your favourites.`;
+    const filters = applied.length ? ` Qloo filters in use: ${applied.join(", ")}.` : "";
+    const fairness =
+      people.length > 1 ? ` The pick that asks the most of anyone is in ${lows[0].p.name}'s ${topPhrase(lows[0].worst)}.` : "";
+    const text = followUp
+      ? applied.length
+        ? `Re-planned.${filters}${fairness}`
+        : `I re-planned, but I couldn't turn "${followUp.slice(0, 80)}" into a Qloo filter (I understand things like cheaper, vegetarian, rooftop, outdoor, live music, no horror, kid-friendly).${fairness}`
+      : people.length > 1
+        ? `Here's a plan built from Qloo's scores for ${groupWord(people.length)}.${fairness}${filters} Tell me what to change, like "cheaper" or "no horror".`
+        : `Here's a plan from Qloo's strongest matches for your favourites.${filters}`;
     ctx.emit({ type: "message", text });
   } else {
     ctx.emit({ type: "message", text: "I couldn't find options with those settings. Try a broader location or fewer filters." });
@@ -234,7 +245,7 @@ export async function runPlan(rawBody: PlanRequestBody, config: AppConfig, emit:
       if (provider && !usedModel) emit({ type: "message", text: "Here's the plan, built from the fairest option for each item." });
     } else {
       ctx.slotResults = {};
-      await runRuleBased(ctx, constraintText);
+      await runRuleBased(ctx, constraintText, req.message);
     }
   }
 

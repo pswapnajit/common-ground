@@ -29,7 +29,10 @@ export interface PlanSlotInput {
   keep?: number;
 }
 
-const POOL_MAX = 45;
+// Film and TV records are heavy (many localised titles), so scoring a long
+// shortlist is slow; 32 keeps a plan in the seconds range.
+const POOL_MAX_MEDIA = 32;
+const POOL_MAX_PLACES = 40;
 
 function unique<T>(xs: T[]): T[] {
   return [...new Set(xs)];
@@ -73,6 +76,9 @@ export async function planSlot(qloo: Qloo, input: PlanSlotInput): Promise<SlotRe
   if (input.includeMode === "any" && include.length) {
     base["filter.tags"] = include;
     base["operator.filter.tags"] = "union";
+  } else if (!include.length && def.unionTags?.length) {
+    base["filter.tags"] = def.unionTags;
+    base["operator.filter.tags"] = "union";
   } else if (categoryTag || include.length) {
     base["filter.tags"] = unique([...(categoryTag ? [categoryTag] : []), ...include]);
     base["operator.filter.tags"] = "intersection";
@@ -99,7 +105,8 @@ export async function planSlot(qloo: Qloo, input: PlanSlotInput): Promise<SlotRe
   const exclude = unique([...allLikes, ...(input.excludeEntityIds ?? [])]);
   base["filter.exclude.entities"] = exclude;
   for (const [k, v] of Object.entries(base)) {
-    if (k !== "filter.exclude.entities" && v !== undefined) filtersShown[k] = Array.isArray(v) ? v.join(",") : String(v);
+    if (k === "filter.exclude.entities" || v === undefined) continue;
+    filtersShown[k] = k === "filter.tags" && v === def.unionTags ? `${def.unionTags!.length} cuisine genres (any)` : Array.isArray(v) ? v.join(",") : String(v);
   }
 
   // 1. Candidates.
@@ -113,33 +120,47 @@ export async function planSlot(qloo: Qloo, input: PlanSlotInput): Promise<SlotRe
       throw error;
     }
   };
-  const [groupRes, ...personalRes] = await Promise.all([
-    runWithType(
-      { ...base, "signal.interests.entities": allLikes.slice(0, 40), "feature.explainability": true, take: 30 },
-      `${def.label} candidates · whole group`,
-    ),
-    ...people.map((p) =>
-      runWithType({ ...base, "signal.interests.entities": p.likes.map((l) => l.id), take: 8 }, `${def.label} candidates · ${p.name}`).catch(
-        () => ({ entities: [], tags: [], raw: null }),
+  const accept = def.accept ?? (() => true);
+  const POOL_MAX = def.accept ? POOL_MAX_PLACES : POOL_MAX_MEDIA;
+  const groupTake = def.accept ? 50 : 24;
+  const personalTake = def.accept ? 15 : 6;
+  const fetchCandidates = (params: QlooParams) =>
+    Promise.all([
+      runWithType(
+        { ...params, "signal.interests.entities": allLikes.slice(0, 40), "feature.explainability": true, take: groupTake },
+        `${def.label} candidates · whole group`,
       ),
-    ),
-  ]);
+      ...people.map((p) =>
+        runWithType({ ...params, "signal.interests.entities": p.likes.map((l) => l.id), take: personalTake }, `${def.label} candidates · ${p.name}`).catch(
+          () => ({ entities: [], tags: [], raw: null }),
+        ),
+      ),
+    ]);
+  // Places: stay inside the named area first (Qloo pads a locality's edge by
+  // default, which pulls Lower Manhattan into "Brooklyn"), widen only if sparse.
+  const strict = def.needsLocation ? { ...base, "filter.location.radius": 0 } : base;
+  let [groupRes, ...personalRes] = await fetchCandidates(strict);
+  if (def.needsLocation && groupRes.entities.filter(accept).length < 10) {
+    [groupRes, ...personalRes] = await fetchCandidates(base);
+    notes.push(`Few matches inside ${filtersShown.location} itself, so the search includes places just outside it.`);
+  }
 
   const cards = new Map<string, EntityCard>();
   const explainById = new Map<string, Map<string, number>>();
   for (const e of groupRes.entities) {
     if (cards.size >= POOL_MAX) break;
     const { explain, affinity: _a, ...card } = e;
+    if (!accept(card)) continue;
     cards.set(e.id, card);
     explainById.set(e.id, explain);
   }
   // Interleave each person's own picks so everyone is represented.
-  for (let i = 0; i < 8 && cards.size < POOL_MAX; i++) {
+  for (let i = 0; i < personalTake && cards.size < POOL_MAX; i++) {
     for (const r of personalRes) {
       const e = r.entities[i];
       if (e && !cards.has(e.id) && cards.size < POOL_MAX) {
         const { explain: _x, affinity: _a, ...card } = e;
-        cards.set(e.id, card);
+        if (accept(card)) cards.set(e.id, card);
       }
     }
   }

@@ -9,6 +9,7 @@ import { isReadableTag } from "../qloo/normalize.js";
 import { rankWithinPool } from "./fairness.js";
 
 const TOP_PER_PERSON = 10;
+const TASTE_PARENTS = ["urn:entity:movie", "urn:entity:tv_show", "urn:entity:artist", "urn:entity:book"];
 
 function likeIds(p: Person): string[] {
   return [...new Set(p.likes.map((l) => l.id))];
@@ -26,6 +27,8 @@ export async function analyzeGroupTaste(qloo: Qloo, group: Person[]): Promise<Gr
           {
             "filter.type": "urn:tag",
             "signal.interests.entities": likeIds(p),
+            // Without this, place attributes ("Three Star", "Inexpensive") crowd out taste.
+            "filter.parents.types": TASTE_PARENTS,
             "diversify.by": "subtype",
             "diversify.take": 6,
             take: 30,

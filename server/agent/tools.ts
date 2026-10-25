@@ -8,7 +8,7 @@ import type { Qloo } from "../qloo/client.js";
 import { planSlot } from "../engine/planner.js";
 import { SLOTS } from "../engine/slots.js";
 import { analyzeGroupTaste } from "../engine/taste.js";
-import { compactSlot, compactTaste, nameLookup, tradeoffText, whyText, type NameOf } from "./describe.js";
+import { compactSlot, compactTaste, nameLookup, topPhrase, tradeoffText, whyText, type NameOf } from "./describe.js";
 
 export const SLOT_KINDS = ["dinner", "drinks", "movie", "series", "music", "book", "trip"] as const;
 
@@ -306,14 +306,16 @@ export function autoPlan(ctx: RunContext, title?: string): Plan | undefined {
     items.push({ slot, ref: pick.ref, why: whyText(pick, r, ctx.nameOf), tradeoff: tradeoffText(pick, r, ctx.nameOf) ?? null });
   }
   if (!items.length) return undefined;
-  const fairCount = items.filter((i) => ctx.slotResults[i.slot]?.candidates[0]?.fair).length;
+  const picks = items.map((i) => ctx.slotResults[i.slot]!.candidates[0]);
+  const fairCount = picks.filter((c) => c.fair).length;
+  const worst = Math.min(...picks.map((c) => c.minPercentile));
   const where = ctx.location ? ` in ${ctx.location}` : "";
   const res = finalize(ctx, {
     title: title ?? `${items.map((i) => SLOT_LABELS[i.slot]).join(" + ")}${where}`,
     summary:
       ctx.group.length > 1
         ? fairCount === items.length
-          ? `Every pick clears everyone's misery floor, so no one is stuck with something near the bottom of their list.`
+          ? `${items.length > 1 ? "Every pick is" : "It's"} in each person's ${topPhrase(worst)} or better, so nobody ends up with something they'd rank near the bottom.`
           : `Your tastes are far apart on some of this, so a few picks are compromises. The trade-offs are spelled out below.`
         : `Picked from Qloo's strongest matches for your favourites.`,
     items,

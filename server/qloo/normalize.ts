@@ -101,24 +101,28 @@ function priceLevel(props: Json): number | undefined {
   return p && p >= 1 && p <= 4 ? Math.round(p) : undefined;
 }
 
-function subtitleFor(kind: EntityKind | undefined, raw: Json, props: Json, geocode: Json | undefined): string | undefined {
+function subtitleFor(kind: EntityKind | undefined, raw: Json, props: Json, geocode: Json | undefined, genre: string | undefined, tags: TagRef[]): string | undefined {
   const year = num(props.release_year) ?? num(str(props.release_date)?.slice(0, 4)) ?? num(props.publication_year);
+  const disambiguation = str(raw.disambiguation) && str(raw.disambiguation) !== str(raw.name) ? str(raw.disambiguation) : undefined;
   switch (kind) {
     case "movie":
-      return year ? String(year) : str(raw.disambiguation);
+      return year ? String(year) : disambiguation;
     case "tv_show":
       return year ? `TV · ${year}` : "TV";
     case "book":
-      return str(raw.disambiguation) ?? (year ? String(year) : undefined);
+      return disambiguation ?? (year ? String(year) : undefined);
+    case "artist":
+      return tags.find((t) => t.type?.startsWith("urn:tag:genre:music"))?.name ?? disambiguation;
     case "place": {
-      const where = str(geocode?.neighborhood) ?? str(props.neighborhood) ?? str(geocode?.city);
+      const where = str(props.neighborhood) ?? str(geocode?.neighborhood) ?? str(geocode?.name) ?? str(geocode?.city);
       const price = priceLevel(props);
-      return [where, price ? "$".repeat(price) : undefined].filter(Boolean).join(" · ") || str(props.address);
+      const what = genre && !/^(restaurant|place)$/i.test(genre) ? genre : undefined;
+      return [what, where, price ? "$".repeat(price) : undefined].filter(Boolean).join(" · ") || str(props.address);
     }
     case "destination":
-      return str(geocode?.country) ?? str(geocode?.admin1_region) ?? str(raw.disambiguation);
+      return str(geocode?.admin1_region) ?? str(geocode?.country) ?? disambiguation;
     default:
-      return str(raw.disambiguation) ?? (year ? String(year) : undefined);
+      return disambiguation ?? (year ? String(year) : undefined);
   }
 }
 
@@ -132,22 +136,28 @@ export function toEntityCard(raw: Json): EntityCard & { affinity?: number } {
         .filter((t: Json | undefined): t is Json => Boolean(t))
         .map((t: Json) => ({ id: str(t.id) ?? str(t.tag_id) ?? "", name: str(t.name) ?? "", type: str(t.type) ?? str(t.subtype) }))
         .filter((t: TagRef) => t.id && isReadableTag(t))
+        .filter((t: TagRef, i: number, all: TagRef[]) => all.findIndex((x) => x.name.toLowerCase() === t.name.toLowerCase()) === i)
         .slice(0, 8)
     : [];
+  const primary = asRecord(props.primary_genre);
+  const genre = str(primary?.name);
   const image = str(asRecord(props.image)?.url) ?? str(asRecord(raw.image)?.url);
   const query = asRecord(raw.query);
   return {
     id: str(raw.entity_id) ?? str(raw.id) ?? "",
     name: str(raw.name) ?? "Untitled",
     kind,
-    subtitle: subtitleFor(kind, raw, props, geocode),
+    subtitle: subtitleFor(kind, raw, props, geocode, genre, tags),
     image,
     popularity: num(raw.popularity),
     priceLevel: priceLevel(props),
     address: str(props.address),
-    neighborhood: str(geocode?.neighborhood) ?? str(props.neighborhood),
+    neighborhood: str(props.neighborhood) ?? str(geocode?.neighborhood),
     city: str(geocode?.city),
     rating: num(props.business_rating),
+    genre,
+    genreId: str(primary?.id),
+    closed: props.is_closed === true ? true : undefined,
     tags,
     description: str(props.short_description) ?? str(props.description)?.slice(0, 280),
     affinity: num(query?.affinity),
