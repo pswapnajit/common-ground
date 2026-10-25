@@ -53,6 +53,13 @@ export function Progress({
             </span>
           </div>
         )}
+        {running && seconds > 25 && (
+          <div className="row">
+            <span className="row-main">
+              <span className="row-sub">Still working. Qloo can take longer the first time it sees a set of favourites; repeats are much faster.</span>
+            </span>
+          </div>
+        )}
         {!!thinking.length && (
           <>
             <button type="button" className="row" onClick={() => setShowNotes((s) => !s)} aria-expanded={showNotes}>

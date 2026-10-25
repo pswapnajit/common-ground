@@ -12,11 +12,11 @@ import { SYSTEM_PROMPT, firstMessage, followUpMessage } from "./prompt.js";
 import { LlmUnavailableError, providerFor, type LlmProvider, type ToolCall } from "./providers/index.js";
 import { SLOT_KINDS, TOOL_SPECS, autoPlan, executeTool, findTags, makeContext, readGroupTaste, runPlanSlot, type PlanSlotArgs, type RunContext } from "./tools.js";
 
-// Vercel functions here stop at 60 s: no new model turn starts after this,
-// and anything planned so far is published by the fallback below.
-const DEADLINE_MS = 38_000;
-/** Total time the model part may use; the rest of the 60 s is for Qloo and the fallback. */
-const BUDGET_MS = 52_000;
+// No new model turn starts after this; anything planned so far is published
+// by the fallback below. Keeps a run well inside the host's function limit.
+const DEADLINE_MS = 45_000;
+/** Total time the model part may use. */
+const BUDGET_MS = 60_000;
 const MAX_HISTORY_BYTES = 400_000;
 
 interface Memo {
