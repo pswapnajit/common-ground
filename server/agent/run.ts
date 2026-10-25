@@ -216,7 +216,13 @@ export async function runPlan(rawBody: PlanRequestBody, config: AppConfig, emit:
     try {
       for (let stepNo = 0; stepNo < config.llm.maxSteps; stepNo++) {
         if (Date.now() - started > DEADLINE_MS) break;
+        // Model turns can take several seconds; show them as steps so the wait is visible.
+        const turnId = `llm${stepNo}-${started}`;
+        const turnLabel = stepNo === 0 ? "Reading the request" : ctx.plan ? "Writing the reply" : "Weighing the options";
+        emit({ type: "step", id: turnId, label: turnLabel, detail: provider.model, state: "running" });
         const turn = await session.turn();
+        const note = turn.thinking.find((t) => t.trim())?.trim().replace(/\s+/g, " ");
+        emit({ type: "step", id: turnId, label: turnLabel, detail: note ? (note.length > 110 ? `${note.slice(0, 107)}…` : note) : provider.model, state: "done" });
         for (const t of turn.thinking) emit({ type: "thinking", text: t.slice(0, 600) });
         if (turn.stop === "refusal") {
           emit({ type: "error", message: "The model declined this request, so the built-in planner took over." });
