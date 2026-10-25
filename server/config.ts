@@ -58,7 +58,9 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       mode: qlooMode,
       apiKey: qlooKey,
       baseUrl: (clean(env.QLOO_BASE_URL) ?? "https://hackathon.api.qloo.com").replace(/\/+$/, ""),
-      timeoutMs: Number(clean(env.QLOO_TIMEOUT_MS) ?? 15000),
+      // Qloo usually answers in 0.5-5 s from a US host; a stalled request is
+      // cut at 9 s and retried once, so one slow call can't stall a plan.
+      timeoutMs: Number(clean(env.QLOO_TIMEOUT_MS) ?? 9000),
     },
     llm: {
       provider,

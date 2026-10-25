@@ -49,7 +49,8 @@ export function liveTransport(opts: { apiKey: string; baseUrl: string; timeoutMs
     async get(path, query) {
       const url = `${opts.baseUrl}${path}?${query.toString()}`;
       let lastError: unknown;
-      for (let attempt = 0; attempt < 3; attempt++) {
+      const attempts = 2;
+      for (let attempt = 0; attempt < attempts; attempt++) {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), opts.timeoutMs);
         try {
@@ -65,7 +66,7 @@ export function liveTransport(opts: { apiKey: string; baseUrl: string; timeoutMs
           } catch {
             body = { message: text.slice(0, 300) };
           }
-          if ((res.status === 429 || res.status >= 500) && attempt < 2) {
+          if ((res.status === 429 || res.status >= 500) && attempt < attempts - 1) {
             const retryAfter = Number(res.headers.get("retry-after"));
             await sleep(Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter * 1000, 4000) : 400 * 2 ** attempt);
             continue;
@@ -73,7 +74,7 @@ export function liveTransport(opts: { apiKey: string; baseUrl: string; timeoutMs
           return { status: res.status, body };
         } catch (error) {
           lastError = error;
-          if (attempt < 2) await sleep(400 * 2 ** attempt);
+          if (attempt < attempts - 1) await sleep(300);
         } finally {
           clearTimeout(timer);
         }
