@@ -21,7 +21,8 @@ export function uid(prefix = "p"): string {
   return `${prefix}${Math.random().toString(36).slice(2, 9)}`;
 }
 
-export const PERSON_COLORS = ["#ef6351", "#1fa39a", "#7c5ce0", "#e09a2b", "#3b8fd9", "#d9518c"];
+// Apple system colours (orange, teal, indigo, pink, green, purple).
+export const PERSON_COLORS = ["#ff9500", "#30b0c7", "#5856d6", "#ff2d55", "#34c759", "#af52de"];
 
 export function colorOf(index: number): string {
   return PERSON_COLORS[((index % PERSON_COLORS.length) + PERSON_COLORS.length) % PERSON_COLORS.length];

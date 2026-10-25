@@ -9,51 +9,80 @@ export interface StepState {
   state: "running" | "done" | "error";
 }
 
-export function Timeline({ steps, thinking, running, qlooCalls, seconds }: { steps: StepState[]; thinking: string[]; running: boolean; qlooCalls: number; seconds: number }) {
+export function Progress({
+  steps,
+  thinking,
+  running,
+  qlooCalls,
+  seconds,
+  onReceipts,
+}: {
+  steps: StepState[];
+  thinking: string[];
+  running: boolean;
+  qlooCalls: number;
+  seconds: number;
+  onReceipts: () => void;
+}) {
   const [showNotes, setShowNotes] = useState(false);
   return (
-    <section className="timeline" aria-live="polite">
-      <div className="timeline-head">
-        <span className="label inline">{running ? "Working on it" : "What the agent did"}</span>
-        <span className="muted small">
-          {qlooCalls} Qloo call{qlooCalls === 1 ? "" : "s"} · {seconds.toFixed(1)}s
-        </span>
+    <section className="section" aria-live="polite">
+      <div className="section-header">
+        <h2>{running ? "Planning" : "Steps"}</h2>
+        <span>{seconds.toFixed(1)} s</span>
       </div>
-      <ol>
+      <div className="group">
         {steps.map((s) => (
-          <li key={s.id} className={`step ${s.state}`}>
-            <span className="step-mark">{s.state === "running" ? <span className="spinner" /> : s.state === "done" ? <Icon.check size={12} /> : <Icon.x size={12} />}</span>
-            <span className="step-text">
-              <span className="step-label">{s.label}</span>
-              {s.detail && <span className="step-detail">{s.detail}</span>}
+          <div key={s.id} className="row">
+            <span className={`indicator${s.state === "error" ? " error" : ""}`}>
+              {s.state === "running" ? <span className="spinner" /> : s.state === "done" ? <Icon.check size={16} /> : <Icon.x size={16} />}
             </span>
-          </li>
+            <span className="row-main">
+              <span className="row-title">{s.label}</span>
+              {s.detail && <span className="row-sub">{s.detail}</span>}
+            </span>
+          </div>
         ))}
         {running && !steps.length && (
-          <li className="step running">
-            <span className="step-mark">
+          <div className="row">
+            <span className="indicator">
               <span className="spinner" />
             </span>
-            <span className="step-text">
-              <span className="step-label">Starting the agent</span>
+            <span className="row-main">
+              <span className="row-title">Starting</span>
             </span>
-          </li>
+          </div>
         )}
-      </ol>
-      {!!thinking.length && (
-        <div className="notes">
-          <button type="button" className="link-btn" onClick={() => setShowNotes((s) => !s)} aria-expanded={showNotes}>
-            {showNotes ? "Hide" : "Show"} the agent's reasoning notes ({thinking.length})
-          </button>
-          {showNotes && (
-            <div className="notes-body">
-              {thinking.map((t, i) => (
-                <p key={i}>{t}</p>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+        {!!thinking.length && (
+          <>
+            <button type="button" className="row" onClick={() => setShowNotes((s) => !s)} aria-expanded={showNotes}>
+              <span className="row-main">
+                <span className="row-title">Agent Notes</span>
+              </span>
+              <span className="row-sub">{thinking.length}</span>
+              <span className="row-accessory" style={{ transform: showNotes ? "rotate(90deg)" : undefined }}>
+                <Icon.chevron size={15} />
+              </span>
+            </button>
+            {showNotes && (
+              <div className="notes-body">
+                {thinking.map((t, i) => (
+                  <p key={i}>{t}</p>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+        <button type="button" className="row" onClick={onReceipts} disabled={!qlooCalls}>
+          <span className="row-main">
+            <span className="row-title">Qloo Requests</span>
+          </span>
+          <span className="row-sub">{qlooCalls}</span>
+          <span className="row-accessory">
+            <Icon.chevron size={15} />
+          </span>
+        </button>
+      </div>
     </section>
   );
 }
@@ -63,7 +92,7 @@ export interface ChatMsg {
   text: string;
 }
 
-const QUICK = ["Somewhere cheaper", "No horror, please", "Make dinner vegetarian-friendly", "Something more lively"];
+const SUGGESTIONS = ["Somewhere cheaper", "No horror", "Vegetarian-friendly dinner", "Something livelier"];
 
 export function Chat({ messages, onSend, busy, enabled }: { messages: ChatMsg[]; onSend: (t: string) => void; busy: boolean; enabled: boolean }) {
   const [text, setText] = useState("");
@@ -79,87 +108,98 @@ export function Chat({ messages, onSend, busy, enabled }: { messages: ChatMsg[];
     setText("");
   };
   return (
-    <section className="chat">
-      <div className="label">Talk to the agent</div>
-      <div className="chat-log">
-        {messages.map((m, i) => (
-          <div key={i} className={`bubble ${m.role}`}>
-            {m.text}
-          </div>
-        ))}
-        {busy && <div className="bubble agent typing">Re-planning…</div>}
-        <div ref={endRef} />
+    <section className="section">
+      <div className="section-header">
+        <h2>Changes</h2>
       </div>
-      {enabled && (
-        <>
-          <div className="quick">
-            {QUICK.map((q) => (
-              <button key={q} type="button" className="quick-chip" disabled={busy} onClick={() => send(q)}>
-                {q}
+      <div className="group">
+        <div className="messages">
+          {messages.map((m, i) => (
+            <div key={i} className={`bubble ${m.role === "user" ? "me" : "them"}`}>
+              {m.text}
+            </div>
+          ))}
+          {busy && <div className="bubble them typing">Re-planning…</div>}
+          <div ref={endRef} />
+        </div>
+        {enabled && (
+          <>
+            <div className="suggestions">
+              {SUGGESTIONS.map((q) => (
+                <button key={q} type="button" className="btn btn-tinted" disabled={busy} onClick={() => send(q)}>
+                  {q}
+                </button>
+              ))}
+            </div>
+            <form
+              className="composer"
+              onSubmit={(e) => {
+                e.preventDefault();
+                send(text);
+              }}
+            >
+              <input value={text} maxLength={600} placeholder="Ask for a change" aria-label="Ask for a change" onChange={(e) => setText(e.target.value)} disabled={busy} />
+              <button type="submit" className="send" disabled={busy || !text.trim()} aria-label="Send">
+                <Icon.arrowUp size={15} />
               </button>
-            ))}
-          </div>
-          <form
-            className="chat-input"
-            onSubmit={(e) => {
-              e.preventDefault();
-              send(text);
-            }}
-          >
-            <input value={text} maxLength={600} placeholder='Ask for a change: "Jun hates sushi", "earlier film"…' onChange={(e) => setText(e.target.value)} disabled={busy} />
-            <button type="submit" className="icon-btn solid" disabled={busy || !text.trim()} aria-label="Send">
-              <Icon.send size={15} />
-            </button>
-          </form>
-        </>
-      )}
+            </form>
+          </>
+        )}
+      </div>
     </section>
   );
 }
 
 export function Receipts({ receipts, open, onClose }: { receipts: QlooReceipt[]; open: boolean; onClose: () => void }) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
   if (!open) return null;
-  const total = receipts.length;
   const cached = receipts.filter((r) => r.cached).length;
   return (
-    <div className="drawer-wrap" role="dialog" aria-modal="true" aria-label="Qloo receipts" onClick={onClose}>
-      <aside className="drawer" onClick={(e) => e.stopPropagation()}>
-        <header className="drawer-head">
+    <div className="scrim" role="dialog" aria-modal="true" aria-label="Qloo requests" onClick={onClose}>
+      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+        <header className="sheet-head">
           <div>
-            <div className="eyebrow">Receipts</div>
-            <h2>Every Qloo request in this plan</h2>
-            <p className="muted small">
-              {total} requests{cached ? `, ${cached} served from this server's private cache` : ""}. Names never leave your browser and the agent; Qloo only sees
-              entity ids.
-            </p>
+            <h2>Qloo Requests</h2>
+            <div className="footnote">
+              {receipts.length} requests{cached ? `, ${cached} from this server's cache` : ""}. Qloo receives entity ids, never people's names.
+            </div>
           </div>
-          <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
-            <Icon.x size={16} />
+          <button type="button" className="btn btn-plain" onClick={onClose} style={{ fontWeight: 600 }}>
+            Done
           </button>
         </header>
-        <ol className="receipts">
-          {receipts.map((r) => (
-            <li key={r.id} className="receipt">
-              <div className="receipt-head">
-                <code>GET {r.path}</code>
-                <span className={`status s${String(r.status)}`}>{r.status === "mock" ? "mock" : r.status}</span>
-                <span className="muted small">
-                  {r.results} result{r.results === 1 ? "" : "s"} · {r.cached ? "cached" : `${r.ms} ms`}
-                </span>
+        <div className="sheet-body">
+          <div className="group">
+            {receipts.map((r) => (
+              <div key={r.id} className="row-block receipt">
+                <div className="receipt-head">
+                  <code>GET {r.path}</code>
+                  <span className={`status-code${r.status === "mock" ? " mock" : typeof r.status === "number" && r.status < 300 ? "" : " bad"}`}>
+                    {r.status === "mock" ? "mock" : r.status}
+                  </span>
+                  <span className="footnote">
+                    {r.results} result{r.results === 1 ? "" : "s"} · {r.cached ? "cached" : `${r.ms} ms`}
+                  </span>
+                </div>
+                {r.purpose && <div className="row-sub">{r.purpose}</div>}
+                <dl>
+                  {Object.entries(r.params).map(([k, v]) => (
+                    <div key={k}>
+                      <dt>{k}</dt>
+                      <dd title={v}>{v.length > 120 ? `${v.slice(0, 120)}… (${v.split(",").length} ids)` : v}</dd>
+                    </div>
+                  ))}
+                </dl>
               </div>
-              {r.purpose && <div className="receipt-purpose">{r.purpose}</div>}
-              <dl>
-                {Object.entries(r.params).map(([k, v]) => (
-                  <div key={k}>
-                    <dt>{k}</dt>
-                    <dd title={v}>{v.length > 120 ? `${v.slice(0, 120)}… (${v.split(",").length} ids)` : v}</dd>
-                  </div>
-                ))}
-              </dl>
-            </li>
-          ))}
-        </ol>
-      </aside>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

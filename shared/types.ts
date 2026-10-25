@@ -201,4 +201,7 @@ export interface HealthResponse {
   qloo: "live" | "mock";
   llm: string;
   model?: string;
+  /** Why the model is off, when it is. */
+  reason?: string;
+  deployment?: string;
 }

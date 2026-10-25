@@ -29,36 +29,35 @@ export function PlanForm({
     setSlots(slots.includes(s) ? slots.filter((x) => x !== s) : slots.length >= 4 ? slots : ORDER.filter((x) => x === s || slots.includes(x)));
   const needsPlace = slots.some((s) => LOCATED_SLOTS.includes(s));
   return (
-    <section className="panel" aria-labelledby="plan-title">
-      <h2 id="plan-title">What are you planning?</h2>
-      <div className="slot-grid" role="group" aria-label="Plan items">
-        {ORDER.map((s) => (
-          <button key={s} type="button" className={`slot-chip${slots.includes(s) ? " on" : ""}`} aria-pressed={slots.includes(s)} onClick={() => toggle(s)}>
-            <SlotIcon slot={s} size={15} />
-            {SLOT_LABELS[s]}
-          </button>
-        ))}
+    <section className="section" aria-labelledby="plan-title">
+      <div className="section-header">
+        <h2 id="plan-title">Plan</h2>
+        <span>Up to 4</span>
       </div>
-      {needsPlace && (
-        <label className="field">
-          <span>Where?</span>
-          <input value={location} maxLength={80} placeholder="New York City, Brooklyn, West Village…" onChange={(e) => setLocation(e.target.value)} />
+      <div className="group">
+        <div className="choices" role="group" aria-label="What to plan">
+          {ORDER.map((s) => (
+            <button key={s} type="button" className={`choice${slots.includes(s) ? " on" : ""}`} aria-pressed={slots.includes(s)} onClick={() => toggle(s)}>
+              <SlotIcon slot={s} size={15} />
+              {SLOT_LABELS[s]}
+            </button>
+          ))}
+        </div>
+        {needsPlace && (
+          <label className="row">
+            <span className="label-cell">Where</span>
+            <input className="field" value={location} maxLength={80} placeholder="City or neighbourhood" onChange={(e) => setLocation(e.target.value)} />
+          </label>
+        )}
+        <label className="row">
+          <span className="label-cell">Notes</span>
+          <input className="field" value={notes} maxLength={600} placeholder="One vegetarian, nothing too pricey" onChange={(e) => setNotes(e.target.value)} />
         </label>
-      )}
-      <label className="field">
-        <span>Anything the agent should know?</span>
-        <textarea
-          rows={2}
-          maxLength={600}
-          value={notes}
-          placeholder="One vegetarian, nothing too pricey, no horror…"
-          onChange={(e) => setNotes(e.target.value)}
-        />
-      </label>
-      <button type="button" className="primary-btn" disabled={busy || !!disabledReason} onClick={onPlan}>
-        {busy ? "Planning…" : "Find our common ground"}
+      </div>
+      <button type="button" className="btn btn-filled wide" style={{ marginTop: 10 }} disabled={busy || !!disabledReason} onClick={onPlan}>
+        {busy ? "Planning…" : "Find Common Ground"}
       </button>
-      {disabledReason && <p className="hint center">{disabledReason}</p>}
+      {disabledReason && <p className="section-footer">{disabledReason}</p>}
     </section>
   );
 }

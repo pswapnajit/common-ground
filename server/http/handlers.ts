@@ -24,11 +24,22 @@ function clientKey(request: Request): string {
 
 export async function handleHealth(): Promise<Response> {
   const config = loadConfig();
+  const offline = config.llm.provider === "offline";
+  // Says why the model is off and which deployment answered; never exposes a key.
+  const reason = !offline
+    ? undefined
+    : (process.env.LLM_PROVIDER ?? "").toLowerCase() === "offline"
+      ? "LLM_PROVIDER is offline"
+      : (process.env.LLM_PROVIDER ?? "").toLowerCase() === "openai"
+        ? "OpenAI-compatible provider needs OPENAI_API_KEY and LLM_MODEL"
+        : "ANTHROPIC_API_KEY is not set for this deployment";
   const body: HealthResponse = {
     ok: true,
     qloo: config.qloo.mode,
-    llm: config.llm.provider === "offline" ? "rule-based" : config.llm.provider,
-    model: config.llm.provider === "offline" ? undefined : config.llm.model,
+    llm: offline ? "rule-based" : config.llm.provider,
+    model: offline ? undefined : config.llm.model,
+    ...(reason ? { reason } : {}),
+    ...(process.env.VERCEL_ENV ? { deployment: `${process.env.VERCEL_ENV} ${process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? ""}`.trim() } : {}),
   };
   return json(body);
 }

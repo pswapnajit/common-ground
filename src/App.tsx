@@ -15,7 +15,7 @@ import type {
 } from "../shared/types";
 import { LOCATED_SLOTS, SLOT_LABELS } from "../shared/types";
 import { health, resolveOne, streamPlan } from "./api";
-import { Chat, Receipts, Timeline, type ChatMsg, type StepState } from "./components/Activity";
+import { Chat, Progress, Receipts, type ChatMsg, type StepState } from "./components/Activity";
 import { GroupPanel } from "./components/GroupPanel";
 import { PlanForm } from "./components/PlanForm";
 import { PlanView, TastePanel } from "./components/PlanView";
@@ -232,31 +232,43 @@ export default function App() {
   const seconds = run.startedAt ? ((run.endedAt ?? now) - run.startedAt) / 1000 : 0;
   const hasRun = run.running || run.plan || run.steps.length > 0 || run.error;
   const people = group.filter((p) => p.likes.length > 0);
+  const progress = (
+    <Progress
+      steps={run.steps}
+      thinking={run.thinking}
+      running={run.running}
+      qlooCalls={run.receipts.length}
+      seconds={seconds}
+      onReceipts={() => setShowReceipts(true)}
+    />
+  );
 
   return (
     <div className="app">
-      <header className="topbar">
-        <a className="brand" href="/" aria-label="Common Ground home">
-          <svg width="30" height="22" viewBox="0 0 44 32" aria-hidden>
-            <circle cx="15" cy="16" r="13" fill="#ef6351" fillOpacity="0.9" />
-            <circle cx="29" cy="16" r="13" fill="#1fa39a" fillOpacity="0.9" />
-            <path d="M22 5.1a13 13 0 0 1 0 21.8a13 13 0 0 1 0-21.8z" className="brand-overlap" />
+      <header className="navbar">
+        <a className="nav-title" href="/" aria-label="Common Ground home">
+          <svg width="26" height="18" viewBox="0 0 36 24" aria-hidden fill="none" stroke="var(--accent)" strokeWidth="2.4">
+            <circle cx="12" cy="12" r="9" />
+            <circle cx="24" cy="12" r="9" />
           </svg>
-          <span>Common Ground</span>
+          Common Ground
         </a>
-        <div className="topbar-right">
+        <div className="nav-actions">
           {qlooMode && (
-            <span className={`pill ${qlooMode}`} title={qlooMode === "live" ? "Requests go to Qloo's hackathon API" : "No Qloo key on the server: results come from a small synthetic catalogue"}>
-              <i /> {qlooMode === "live" ? "Qloo live" : "Demo data"}
+            <span
+              className={`status ${qlooMode}`}
+              title={qlooMode === "live" ? "Requests go to Qloo's hackathon API" : "No Qloo key on the server: results come from a small synthetic catalogue"}
+            >
+              <i /> {qlooMode === "live" ? "Qloo Live" : "Demo Data"}
             </span>
           )}
           {llm && (
-            <span className="pill neutral" title={llm === "rule-based" ? "No language model configured: a rule-based planner runs the same Qloo tools" : `Agent model: ${model}`}>
-              {llm === "rule-based" ? "Rule-based agent" : `Agent: ${prettyModel(model)}`}
+            <span className="status model" title={llm === "rule-based" ? "No language model configured: a rule-based planner runs the same Qloo tools" : `Agent model: ${model}`}>
+              {llm === "rule-based" ? "Built-in Planner" : prettyModel(model)}
             </span>
           )}
-          <button type="button" className="icon-btn" aria-label="Toggle dark mode" onClick={() => setTheme(isDark(theme) ? "light" : "dark")}>
-            {isDark(theme) ? <Icon.sun size={16} /> : <Icon.moon size={16} />}
+          <button type="button" className="icon-btn" aria-label="Toggle appearance" onClick={() => setTheme(isDark(theme) ? "light" : "dark")}>
+            {isDark(theme) ? <Icon.sun size={17} /> : <Icon.moon size={17} />}
           </button>
           <a className="icon-btn" href={REPO_URL} target="_blank" rel="noreferrer" aria-label="Source code on GitHub">
             <Icon.github size={16} />
@@ -265,7 +277,7 @@ export default function App() {
       </header>
 
       <main className="layout">
-        <div className="left">
+        <aside className="sidebar">
           <GroupPanel group={group} onChange={setGroup} onAdd={() => setGroup([...group, newPerson(group.length)])} ledger={ledger} />
           <PlanForm
             slots={slots}
@@ -278,70 +290,84 @@ export default function App() {
             disabledReason={disabledReason}
             onPlan={() => planNow()}
           />
-          <p className="privacy">
-            Your group stays in this browser. Qloo only receives the ids of the films, artists and places you add, never names.
-          </p>
-        </div>
+          <p className="section-footer">Your group stays in this browser. Qloo receives the ids of the things you add, never names.</p>
+        </aside>
 
-        <div className="right" ref={resultsRef}>
+        <div className="content" ref={resultsRef}>
           {!hasRun && (
-            <section className="hero">
-              <h1>
-                Plans your whole group will <em>actually</em> enjoy.
-              </h1>
-              <p className="lede">
-                Add your people and a few things each of them loves. The agent uses Qloo's taste graph to find where your tastes overlap, scores every option for
-                every person, and picks the one that's fair to all of you.
-              </p>
-              <ol className="how">
-                <li>
-                  <b>1</b>
-                  <span>
-                    <strong>Add favourites.</strong> Films, shows, music, books, places. They don't need to match.
-                  </span>
-                </li>
-                <li>
-                  <b>2</b>
-                  <span>
-                    <strong>Qloo finds the overlap.</strong> Its graph links tastes across categories, so a horror fan and a rom-com fan can still share a restaurant.
-                  </span>
-                </li>
-                <li>
-                  <b>3</b>
-                  <span>
-                    <strong>A fair plan, with receipts.</strong> Each person's predicted fit, who gives up what, and every Qloo request behind it.
-                  </span>
-                </li>
-              </ol>
-              <div className="samples">
-                <div className="label">Try a sample group</div>
-                <div className="sample-grid">
+            <div className="welcome">
+              <div>
+                <h1 className="large-title">Plan something everyone will enjoy.</h1>
+                <p className="subhead">
+                  Add a few favourites for each person. Common Ground uses Qloo's taste graph to score every option for every person, then picks the one that's
+                  fairest to the whole group.
+                </p>
+              </div>
+              <section className="section" aria-label="How it works">
+                <div className="group">
+                  <div className="row-block feature">
+                    <span className="feature-icon">
+                      <Icon.people size={17} />
+                    </span>
+                    <span>
+                      <div className="feature-title">Add favourites</div>
+                      <div className="feature-text">Films, shows, music, books or places for each person. They don't need to overlap.</div>
+                    </span>
+                  </div>
+                  <div className="row-block feature">
+                    <span className="feature-icon">
+                      <Icon.chart size={17} />
+                    </span>
+                    <span>
+                      <div className="feature-title">Qloo scores every option</div>
+                      <div className="feature-text">Each person gets their own predicted fit on the same shortlist, across categories.</div>
+                    </span>
+                  </div>
+                  <div className="row-block feature">
+                    <span className="feature-icon">
+                      <Icon.shield size={17} />
+                    </span>
+                    <span>
+                      <div className="feature-title">Get a fair plan</div>
+                      <div className="feature-text">No pick lands near the bottom of anyone's list, and every trade-off is explained.</div>
+                    </span>
+                  </div>
+                </div>
+              </section>
+              <section className="section" aria-labelledby="samples-title">
+                <div className="section-header">
+                  <h2 id="samples-title">Sample Groups</h2>
+                </div>
+                <div className="group">
                   {SAMPLES.map((s) => (
-                    <button key={s.id} type="button" className="sample" disabled={!!loadingSample || run.running} onClick={() => loadSample(s)}>
-                      <span className="sample-title">{s.title}</span>
-                      <span className="sample-blurb">{s.blurb}</span>
-                      <span className="sample-cta">{loadingSample === s.id ? "Loading…" : "Plan this →"}</span>
+                    <button key={s.id} type="button" className="row" disabled={!!loadingSample || run.running} onClick={() => loadSample(s)}>
+                      <span className="row-main">
+                        <span className="row-title">{s.title}</span>
+                        <span className="row-sub">{s.blurb}</span>
+                      </span>
+                      <span className="row-accessory">{loadingSample === s.id ? <span className="spinner" /> : <Icon.chevron size={16} />}</span>
                     </button>
                   ))}
                 </div>
-              </div>
-            </section>
+              </section>
+            </div>
           )}
 
           {hasRun && (
             <>
-              {run.status?.notice && <div className="notice">{run.status.notice}</div>}
-              {run.error && <div className="notice error">{run.error}</div>}
-              <div className="run-head">
-                <Timeline steps={run.steps} thinking={run.thinking} running={run.running} qlooCalls={run.receipts.length} seconds={seconds} />
-                <button type="button" className="receipt-btn" onClick={() => setShowReceipts(true)} disabled={!run.receipts.length}>
-                  <Icon.receipt size={16} />
-                  <span>
-                    <strong>{run.receipts.length}</strong> Qloo receipts
-                  </span>
-                </button>
-              </div>
-              {run.taste && people.length > 1 && <TastePanel taste={run.taste} people={people} />}
+              {run.status?.notice && (
+                <div className="notice">
+                  <Icon.info size={16} />
+                  <span>{run.status.notice}</span>
+                </div>
+              )}
+              {run.error && (
+                <div className="notice error">
+                  <Icon.info size={16} />
+                  <span>{run.error}</span>
+                </div>
+              )}
+              {!run.plan && progress}
               {run.plan && (
                 <PlanView
                   plan={run.plan}
@@ -356,9 +382,11 @@ export default function App() {
               )}
               {run.running && !run.plan && <div className="skeleton" aria-hidden />}
               <Chat messages={chat} onSend={(t) => followUp(t)} busy={run.running} enabled={!!run.plan} />
-              <div className="again">
-                <button type="button" className="link-btn" onClick={() => setRun(EMPTY_RUN)} disabled={run.running}>
-                  ← Back to sample groups
+              {run.taste && people.length > 1 && <TastePanel taste={run.taste} people={people} />}
+              {run.plan && progress}
+              <div>
+                <button type="button" className="btn btn-plain" onClick={() => setRun(EMPTY_RUN)} disabled={run.running}>
+                  Sample Groups
                 </button>
               </div>
             </>
@@ -368,14 +396,14 @@ export default function App() {
 
       <footer className="footer">
         <span>
-          Common Ground is built on the{" "}
+          Built on the{" "}
           <a href="https://docs.qloo.com/reference/insights-api-deep-dive" target="_blank" rel="noreferrer">
             Qloo Insights API
           </a>{" "}
           for the Qloo Agentic Hackathon. Predicted fit is an estimate from aggregate taste data, not a promise about any one person.
         </span>
         <a href={REPO_URL} target="_blank" rel="noreferrer">
-          Source (MIT)
+          Source code (MIT)
         </a>
       </footer>
       <Receipts receipts={run.receipts} open={showReceipts} onClose={() => setShowReceipts(false)} />

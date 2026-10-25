@@ -4,15 +4,15 @@ import { searchEntities } from "../api";
 import { Icon, KIND_LABEL, KindIcon } from "../icons";
 
 const FILTERS: Array<{ kind?: EntityKind; label: string }> = [
-  { label: "Anything" },
-  { kind: "movie", label: "Film" },
+  { label: "All" },
+  { kind: "movie", label: "Films" },
   { kind: "tv_show", label: "TV" },
   { kind: "artist", label: "Music" },
-  { kind: "book", label: "Book" },
-  { kind: "place", label: "Place" },
+  { kind: "book", label: "Books" },
+  { kind: "place", label: "Places" },
   { kind: "destination", label: "Travel" },
-  { kind: "podcast", label: "Podcast" },
-  { kind: "video_game", label: "Game" },
+  { kind: "podcast", label: "Podcasts" },
+  { kind: "video_game", label: "Games" },
 ];
 
 export function EntitySearch({ onPick, exclude, autoFocus }: { onPick: (e: EntityCard) => void; exclude: Set<string>; autoFocus?: boolean }) {
@@ -61,12 +61,12 @@ export function EntitySearch({ onPick, exclude, autoFocus }: { onPick: (e: Entit
   return (
     <div className="search" onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && setOpen(false)}>
       <div className="search-row">
-        <Icon.plus size={14} />
+        <Icon.search size={15} />
         <input
           ref={inputRef}
           autoFocus={autoFocus}
           value={q}
-          placeholder="Add something they love: a film, show, artist, book, place…"
+          placeholder="Search films, shows, music, books, places"
           aria-label="Search Qloo for a favourite"
           onFocus={() => setOpen(true)}
           onChange={(e) => {
@@ -95,27 +95,27 @@ export function EntitySearch({ onPick, exclude, autoFocus }: { onPick: (e: Entit
         </select>
       </div>
       {open && q.trim().length >= 2 && (
-        <div className="search-pop" role="listbox">
-          {loading && !results.length && <div className="search-empty">Searching Qloo…</div>}
-          {error && <div className="search-empty error">{error}</div>}
-          {!loading && !error && !results.length && <div className="search-empty">No matches. Try another spelling or category.</div>}
+        <div className="menu" role="listbox">
+          {loading && !results.length && <div className="menu-empty">Searching…</div>}
+          {error && <div className="menu-empty error">{error}</div>}
+          {!loading && !error && !results.length && <div className="menu-empty">No results. Try another spelling or category.</div>}
           {results.map((r, i) => (
             <button
               key={r.id}
               type="button"
               role="option"
               aria-selected={i === active}
-              className={`search-item${i === active ? " active" : ""}`}
+              className={`menu-item${i === active ? " active" : ""}`}
               onMouseEnter={() => setActive(i)}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => pick(r)}
             >
-              <span className="kind-badge">
-                <KindIcon kind={r.kind} size={13} />
+              <span className="kind-tile">
+                <KindIcon kind={r.kind} size={14} />
               </span>
-              <span className="search-text">
-                <span className="search-name">{r.name}</span>
-                <span className="search-sub">
+              <span className="menu-text">
+                <span className="menu-name">{r.name}</span>
+                <span className="menu-sub">
                   {KIND_LABEL[r.kind]}
                   {r.subtitle ? ` · ${r.subtitle}` : ""}
                 </span>
