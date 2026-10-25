@@ -93,7 +93,7 @@ The default model is Claude Opus 5.5 through the official Anthropic SDK (adaptiv
 | `GET /v2/insights` | `filter.type=urn:tag`, `filter.parents.types`, `diversify.by=subtype`, `filter.results.tags` | Taste fingerprints and the person × tag matrix |
 | `GET /v2/analysis/compare` | `a.signal.interests.entities`, `b.signal.interests.entities` | Shared tags for two-person groups |
 
-A two-item plan for three people makes about 20 Qloo requests, run in parallel where possible and cached in server memory. On the hosted demo the Claude agent returns a fresh two-item plan in about 30 seconds (three or four model turns plus the Qloo work) and a follow-up in about 15. The Qloo part alone takes about 4 seconds, which is also how long the built-in planner takes when no model key is set. Repeat Qloo requests come from the cache.
+A two-item plan for three people makes about 20 Qloo requests, run in parallel where possible and cached in server memory. On the hosted demo the Claude agent usually returns a fresh two-item plan in 15 to 30 seconds (three model turns plus the Qloo work) and a follow-up in about 15. Qloo's hackathon API is occasionally much slower, so functions may run for up to 300 seconds and the page says when it is still working. The Qloo part alone takes about 4 seconds, which is also how long the built-in planner takes when no model key is set. Repeat Qloo requests come from the cache.
 
 ### What the live data taught us
 
