@@ -4,13 +4,13 @@
 
 Built for the [Qloo Agentic Hackathon](https://qloo.devpost.com/).
 
-- **Live demo:** _add the deployed URL here_
+- **Live demo:** https://common-ground-puce.vercel.app
 - **Submission text:** [submission/DEVPOST.md](submission/DEVPOST.md)
 - **Why this idea:** [IDEA.md](IDEA.md)
 
 ## Try it in 30 seconds
 
-1. Open the live demo.
+1. Open the [live demo](https://common-ground-puce.vercel.app).
 2. Click **Roommates, Friday night** (or any sample group). The agent reads each person's taste, plans dinner and a movie, and shows how well each pick fits each person.
 3. Type a change in the chat box (try *"No horror, please"* or *"Somewhere cheaper"*), press **Not this one** on a pick, or open **Qloo receipts** to see every API request it made.
 
@@ -93,7 +93,7 @@ The default model is Claude Opus 5.5 through the official Anthropic SDK (adaptiv
 | `GET /v2/insights` | `filter.type=urn:tag`, `filter.parents.types`, `diversify.by=subtype`, `filter.results.tags` | Taste fingerprints and the person × tag matrix |
 | `GET /v2/analysis/compare` | `a.signal.interests.entities`, `b.signal.interests.entities` | Shared tags for two-person groups |
 
-A two-item plan for three people makes about 20 Qloo requests, run in parallel where possible and cached in server memory. A fresh plan takes roughly 10 to 20 seconds, most of it spent scoring film and TV shortlists; repeat plans come straight from the cache.
+A two-item plan for three people makes about 20 Qloo requests, run in parallel where possible and cached in server memory. On the hosted demo a fresh plan takes about 4 seconds, most of it spent scoring film and TV shortlists; a repeat plan comes from the cache in under a second.
 
 ### What the live data taught us
 

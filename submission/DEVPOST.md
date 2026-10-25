@@ -14,7 +14,7 @@ An agent that plans a night out for friends whose tastes clash. Qloo scores ever
 
 ## Try it out
 
-- Live app: _deployed URL_
+- Live app: https://common-ground-puce.vercel.app
 - Code: https://github.com/pswapnajit/common-ground
 
 ## Built with
@@ -67,7 +67,7 @@ Endpoints used in one product flow: `/search` (typeahead), `/v2/tags` (category 
 - **Comparing people fairly.** Raw affinity scores from different requests can't be compared, so averaging them would quietly favour whoever's request happened to score higher. Rank-normalising within one shared shortlist fixed that.
 - **Keeping the agent honest.** Language models like to add detail. We limited the agent to facts the tools return (percentiles, credit, shared tags) and made the server reject picks that weren't scored.
 - **Real data is messier than the docs.** Taste analysis without `filter.parents.types` returned place attributes ("Three Star", "Inexpensive") all scored 1.0. A search in "Brooklyn" also returned Lower Manhattan, because Qloo pads a locality's edge unless `filter.location.radius=0`. And the "restaurant" tag covered cafes, bakeries and a shopping mall, so dinner now ORs 36 cuisine genres and checks each place's `primary_genre`.
-- **Speed.** A plan for three people takes about 20 Qloo requests. They run in parallel, identical requests are de-duplicated, and results are cached in server memory. Scoring film shortlists is the slowest part, so those shortlists are capped at 32 options; a fresh plan takes roughly 10 to 20 seconds.
+- **Speed.** A plan for three people takes about 20 Qloo requests. They run in parallel, identical requests are de-duplicated, and results are cached in server memory. Scoring film shortlists is the slowest part, so those shortlists are capped at 32 options. On the hosted demo a fresh plan takes about 4 seconds, and a repeat comes from the cache in under a second.
 
 ### Accomplishments that we're proud of
 
