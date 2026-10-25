@@ -29,14 +29,14 @@ export function openaiCompatibleProvider(opts: { apiKey: string; model: string; 
         addToolResults(results) {
           for (const r of results) messages.push({ role: "tool", tool_call_id: r.id, content: r.content });
         },
-        async turn(): Promise<TurnResult> {
+        async turn(timeoutMs?: number): Promise<TurnResult> {
           let res: Response;
           try {
             res = await fetch(`${opts.baseUrl}/chat/completions`, {
               method: "POST",
               headers: { "Content-Type": "application/json", Authorization: `Bearer ${opts.apiKey}` },
               body: JSON.stringify({ model: opts.model, messages, tools: toolDefs, tool_choice: "auto" }),
-              signal: AbortSignal.timeout(60_000),
+              signal: AbortSignal.timeout(Math.max(5_000, Math.min(25_000, timeoutMs ?? 25_000))),
             });
           } catch (error) {
             throw new LlmUnavailableError(`Could not reach the model API: ${(error as Error).message}`, true);

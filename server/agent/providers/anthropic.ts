@@ -8,7 +8,8 @@ import { LlmUnavailableError, type LlmProvider, type LlmSession, type TurnResult
 type Msg = Anthropic.Beta.BetaMessageParam;
 
 export function anthropicProvider(opts: { apiKey: string; model: string; effort: "low" | "medium" | "high" }): LlmProvider {
-  const client = new Anthropic({ apiKey: opts.apiKey, maxRetries: 2, timeout: 60_000 });
+  // One retry and a 25 s ceiling per call keep a whole run inside a 60 s function.
+  const client = new Anthropic({ apiKey: opts.apiKey, maxRetries: 1, timeout: 25_000 });
   // Server-side refusal fallback (routes a declined request to Anthropic's
   // recommended substitute model). Not offered on Haiku.
   const useFallbacks = !/haiku/i.test(opts.model);
@@ -43,8 +44,9 @@ export function anthropicProvider(opts: { apiKey: string; model: string; effort:
             })),
           });
         },
-        async turn(): Promise<TurnResult> {
+        async turn(timeoutMs?: number): Promise<TurnResult> {
           let response: Anthropic.Beta.BetaMessage;
+          const budget = timeoutMs ? { timeout: Math.max(5_000, Math.min(25_000, timeoutMs)), maxRetries: timeoutMs < 30_000 ? 0 : 1 } : undefined;
           try {
             response = await client.beta.messages.create({
               model: opts.model,
@@ -57,7 +59,7 @@ export function anthropicProvider(opts: { apiKey: string; model: string; effort:
               output_config: { effort: opts.effort },
               cache_control: { type: "ephemeral" },
               ...(useFallbacks ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
-            });
+            }, budget);
           } catch (error) {
             if (error instanceof Anthropic.AuthenticationError || error instanceof Anthropic.PermissionDeniedError) {
               throw new LlmUnavailableError("The Anthropic API key was rejected.", false);

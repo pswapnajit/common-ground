@@ -38,7 +38,7 @@ The agent then:
 1. Reads each person's taste fingerprint from Qloo and shows where the group's tastes meet and where they pull apart.
 2. Builds a shortlist for each item from everyone's favourites, scores the same shortlist separately for every person, and ranks it so nobody ends up near the bottom of their own list.
 3. Publishes a plan. Each pick shows every person's predicted fit, whose favourites pulled it up, who gives up the most compared with their own number one, and how the most popular option would have treated the group.
-4. Takes follow-ups in plain English ("no horror", "somewhere cheaper", "Jun hates sushi") or a tap on **Not this one**, then re-plans only what changed.
+4. Takes follow-ups in plain English ("no horror", "somewhere cheaper", "Jun hates sushi") or a tap on **Not this one**, then re-plans only what changed. Asked for "No horror, please", it looks up Qloo's Horror tag, re-plans only the movie with that tag excluded, and leaves dinner alone.
 
 When the group accepts a plan, a fairness ledger in the browser remembers how well it fit each person. Whoever compromised most gets a slightly bigger say next time.
 
@@ -67,7 +67,7 @@ Endpoints used in one product flow: `/search` (typeahead), `/v2/tags` (category 
 - **Comparing people fairly.** Raw affinity scores from different requests can't be compared, so averaging them would quietly favour whoever's request happened to score higher. Rank-normalising within one shared shortlist fixed that.
 - **Keeping the agent honest.** Language models like to add detail. We limited the agent to facts the tools return (percentiles, credit, shared tags) and made the server reject picks that weren't scored.
 - **Real data is messier than the docs.** Taste analysis without `filter.parents.types` returned place attributes ("Three Star", "Inexpensive") all scored 1.0. A search in "Brooklyn" also returned Lower Manhattan, because Qloo pads a locality's edge unless `filter.location.radius=0`. And the "restaurant" tag covered cafes, bakeries and a shopping mall, so dinner now ORs 36 cuisine genres and checks each place's `primary_genre`.
-- **Speed.** A plan for three people takes about 20 Qloo requests. They run in parallel, identical requests are de-duplicated, and results are cached in server memory. Scoring film shortlists is the slowest part, so those shortlists are capped at 32 options. On the hosted demo a fresh plan takes about 4 seconds, and a repeat comes from the cache in under a second.
+- **Speed.** A plan for three people takes about 20 Qloo requests. They run in parallel, identical requests are de-duplicated, and results are cached in server memory. Scoring film shortlists is the slowest part, so those shortlists are capped at 32 options. On the hosted demo the Claude agent returns a fresh two-item plan in about 30 seconds and a follow-up in about 15; the Qloo work is about 4 seconds of that.
 
 ### Accomplishments that we're proud of
 

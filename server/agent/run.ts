@@ -12,7 +12,11 @@ import { SYSTEM_PROMPT, firstMessage, followUpMessage } from "./prompt.js";
 import { LlmUnavailableError, providerFor, type LlmProvider, type ToolCall } from "./providers/index.js";
 import { SLOT_KINDS, TOOL_SPECS, autoPlan, executeTool, findTags, makeContext, readGroupTaste, runPlanSlot, type PlanSlotArgs, type RunContext } from "./tools.js";
 
-const DEADLINE_MS = 50_000;
+// Vercel functions here stop at 60 s: no new model turn starts after this,
+// and anything planned so far is published by the fallback below.
+const DEADLINE_MS = 38_000;
+/** Total time the model part may use; the rest of the 60 s is for Qloo and the fallback. */
+const BUDGET_MS = 52_000;
 const MAX_HISTORY_BYTES = 400_000;
 
 interface Memo {
@@ -216,11 +220,12 @@ export async function runPlan(rawBody: PlanRequestBody, config: AppConfig, emit:
     try {
       for (let stepNo = 0; stepNo < config.llm.maxSteps; stepNo++) {
         if (Date.now() - started > DEADLINE_MS) break;
+        const remaining = BUDGET_MS - (Date.now() - started);
         // Model turns can take several seconds; show them as steps so the wait is visible.
         const turnId = `llm${stepNo}-${started}`;
         const turnLabel = stepNo === 0 ? "Reading the request" : ctx.plan ? "Writing the reply" : "Weighing the options";
         emit({ type: "step", id: turnId, label: turnLabel, detail: provider.model, state: "running" });
-        const turn = await session.turn();
+        const turn = await session.turn(remaining);
         const note = turn.thinking.find((t) => t.trim())?.trim().replace(/\s+/g, " ");
         emit({ type: "step", id: turnId, label: turnLabel, detail: note ? (note.length > 110 ? `${note.slice(0, 107)}…` : note) : provider.model, state: "done" });
         for (const t of turn.thinking) emit({ type: "thinking", text: t.slice(0, 600) });
@@ -229,7 +234,15 @@ export async function runPlan(rawBody: PlanRequestBody, config: AppConfig, emit:
           break;
         }
         if (turn.toolCalls.length) {
+          const hadPlan = ctx.plan;
           session.addToolResults(await executeAll(ctx, turn.toolCalls));
+          // finalize_plan carries the reply, so a published plan ends the run
+          // without another model call.
+          if (ctx.plan && ctx.plan !== hadPlan) {
+            emit({ type: "message", text: ctx.reply ?? turn.text ?? "Here's the plan." });
+            usedModel = true;
+            break;
+          }
           continue;
         }
         if (turn.text) emit({ type: "message", text: turn.text });

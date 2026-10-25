@@ -17,7 +17,8 @@ export interface TurnResult {
 export interface LlmSession {
   readonly messages: unknown[];
   addUser(text: string): void;
-  turn(): Promise<TurnResult>;
+  /** One model call. `timeoutMs` caps it so a run fits the host's time limit. */
+  turn(timeoutMs?: number): Promise<TurnResult>;
   addToolResults(results: Array<{ id: string; content: string; isError?: boolean }>): void;
 }
 

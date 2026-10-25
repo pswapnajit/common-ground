@@ -110,12 +110,15 @@ describe("model-driven agent loop", () => {
           text: "",
           thinking: [],
           stop: "tool_use",
-          toolCalls: [{ id: "t3", name: "finalize_plan", input: { title: "Movie night", summary: "A fair pick.", items: [{ slot: "movie", ref, why: "Both of you rank it high.", tradeoff: null }], note_for_group: null } }],
+          toolCalls: [{ id: "t3", name: "finalize_plan", input: { title: "Movie night", summary: "A fair pick.", items: [{ slot: "movie", ref, why: "Both of you rank it high.", tradeoff: null }], note_for_group: null, reply: "Here's your movie night." } }],
         };
       },
-      () => ({ text: "Here's your movie night.", thinking: [], stop: "end", toolCalls: [] }),
+      () => {
+        throw new Error("the run should end at finalize_plan without another model call");
+      },
     ]);
     const events = await collect({ group, slots: ["movie"] }, provider);
+    expect(provider.sent).toHaveLength(3);
     expect(events.find((e) => e.type === "status")).toMatchObject({ status: { llm: "scripted", model: "test" } });
     expect(events.some((e) => e.type === "thinking")).toBe(true);
     const plan = events.find((e) => e.type === "plan");
@@ -131,7 +134,7 @@ describe("model-driven agent loop", () => {
       () => ({ text: "", thinking: [], stop: "tool_use", toolCalls: [{ id: "t2", name: "finalize_plan", input: { title: "T", summary: "S", items: [{ slot: "movie", ref: "movie-99", why: "x", tradeoff: null }], note_for_group: null } }] }),
       (last) => {
         expect(JSON.parse(last[0])).toMatchObject({ ok: false });
-        return { text: "", thinking: [], stop: "tool_use", toolCalls: [{ id: "t3", name: "finalize_plan", input: { title: "T", summary: "S", items: [{ slot: "movie", ref: "movie-1", why: "x", tradeoff: null }], note_for_group: null } }] };
+        return { text: "", thinking: [], stop: "tool_use", toolCalls: [{ id: "t3", name: "finalize_plan", input: { title: "T", summary: "S", items: [{ slot: "movie", ref: "movie-1", why: "x", tradeoff: null }], note_for_group: null, reply: "Done." } }] };
       },
       () => ({ text: "Done.", thinking: [], stop: "end", toolCalls: [] }),
     ]);

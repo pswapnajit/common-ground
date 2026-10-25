@@ -32,6 +32,8 @@ export interface RunContext {
   /** Slots planned during this run (as opposed to restored from the last one). */
   freshSlots: Set<SlotKind>;
   plan?: Plan;
+  /** The agent's message to the group, sent with finalize_plan. */
+  reply?: string;
 }
 
 export function makeContext(
@@ -102,7 +104,7 @@ export const TOOL_SPECS: ToolSpec[] = [
   {
     name: "finalize_plan",
     description:
-      "Publishes the plan to the group. Pick one option per item by its ref from the latest plan_slot results. 'why' and 'tradeoff' must only use facts from the tool results (percentiles, who pulled it up, shared tags, personal number ones). Call this exactly once per request, after planning every item.",
+      "Publishes the plan to the group and ends your turn. Pick one option per item by its ref from the latest plan_slot results. 'why' and 'tradeoff' must only use facts from the tool results (percentiles, who pulled it up, shared tags, personal number ones). Call this exactly once per request, after planning every item, and put your message to the group in 'reply'.",
     input_schema: {
       type: "object",
       properties: {
@@ -123,8 +125,12 @@ export const TOOL_SPECS: ToolSpec[] = [
           },
         },
         note_for_group: { anyOf: [{ type: "string" }, { type: "null" }], description: "Optional one-line note for the group chat, or null." },
+        reply: {
+          type: "string",
+          description: "Your message to the group, shown in the chat: two or three short sentences on what you chose and the main trade-off (or what changed, for a follow-up).",
+        },
       },
-      required: ["title", "summary", "items", "note_for_group"],
+      required: ["title", "summary", "items", "note_for_group", "reply"],
       additionalProperties: false,
     },
   },
@@ -154,6 +160,7 @@ const inputs = {
       .array(z.object({ slot: slotEnum, ref: z.string(), why: z.string().max(600), tradeoff: z.string().max(400).nullable().optional() }))
       .min(1),
     note_for_group: z.string().max(400).nullable().optional(),
+    reply: z.string().max(900).optional(),
   }),
 };
 
@@ -351,6 +358,7 @@ export async function executeTool(ctx: RunContext, name: string, rawInput: unkno
           s.fail(errors[0]);
           return { content: JSON.stringify({ ok: false, errors }), isError: true };
         }
+        if (a.reply?.trim()) ctx.reply = a.reply.trim();
         s.done(`${a.items.length} item${a.items.length === 1 ? "" : "s"}`);
         return { content: JSON.stringify({ ok: true, published_items: a.items.map((i) => i.ref) }) };
       }

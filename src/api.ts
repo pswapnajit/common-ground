@@ -19,6 +19,24 @@ export async function searchEntities(q: string, kind?: EntityKind, signal?: Abor
 
 /** Streams NDJSON events from /api/plan. */
 export async function streamPlan(body: PlanRequestBody, onEvent: (e: PlanEvent) => void, signal?: AbortSignal): Promise<void> {
+  // The server sends a heartbeat every 10 s, so 45 s of silence means it has stopped.
+  const quiet = new AbortController();
+  signal?.addEventListener("abort", () => quiet.abort());
+  let last = Date.now();
+  const watchdog = setInterval(() => {
+    if (Date.now() - last > 45_000) quiet.abort();
+  }, 5_000);
+  try {
+    await readPlanStream(body, onEvent, quiet.signal, () => (last = Date.now()));
+  } catch (error) {
+    if (quiet.signal.aborted && !signal?.aborted) throw new Error("The server stopped responding before the plan was finished. Please try again.");
+    throw error;
+  } finally {
+    clearInterval(watchdog);
+  }
+}
+
+async function readPlanStream(body: PlanRequestBody, onEvent: (e: PlanEvent) => void, signal: AbortSignal, onActivity: () => void): Promise<void> {
   const res = await fetch("/api/plan", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -35,6 +53,7 @@ export async function streamPlan(body: PlanRequestBody, onEvent: (e: PlanEvent) 
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
+    onActivity();
     buffer += decoder.decode(value, { stream: true });
     let nl: number;
     while ((nl = buffer.indexOf("\n")) >= 0) {
