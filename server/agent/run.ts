@@ -146,21 +146,47 @@ async function runRuleBased(ctx: RunContext, constraintText: string, followUp?: 
 
 const ORDER: Record<string, number> = { read_group_taste: 0, find_qloo_tags: 0, plan_slot: 1, finalize_plan: 2 };
 
+const TOOL_LIMIT_MS = 35_000;
+const LOOP_LIMIT_MS = 65_000;
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** A tool that hangs returns an error to the model instead of stalling the run. */
+async function withTimeout(work: Promise<{ content: string; isError?: boolean }>, ms: number, name: string) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limit = new Promise<{ content: string; isError: boolean }>((resolve) => {
+    timer = setTimeout(() => {
+      console.error(`[agent] tool ${name} exceeded ${ms} ms`);
+      resolve({ content: JSON.stringify({ error: `${name} took too long. Use the results you already have.` }), isError: true });
+    }, ms);
+  });
+  try {
+    return await Promise.race([work, limit]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function executeAll(ctx: RunContext, calls: ToolCall[]) {
+  const t0 = Date.now();
+  console.log(`[agent] tools: ${calls.map((c) => c.name).join(", ")}`);
   const results = new Map<string, { id: string; content: string; isError?: boolean }>();
   // Taste and tag lookups first, then item planning, then the write-up: a model
   // may ask for all of them in one turn, but later stages read earlier results.
   for (const stage of [0, 1, 2]) {
     const batch = calls.filter((c) => (ORDER[c.name] ?? 1) === stage);
-    const outs = await Promise.all(batch.map((c) => executeTool(ctx, c.name, c.input)));
+    const outs = await Promise.all(batch.map((c) => withTimeout(executeTool(ctx, c.name, c.input), TOOL_LIMIT_MS, c.name)));
     batch.forEach((c, i) => results.set(c.id, { id: c.id, ...outs[i] }));
   }
+  console.log(`[agent] tools done in ${Date.now() - t0} ms`);
   return calls.map((c) => results.get(c.id)!);
 }
 
 export interface RunDeps {
   /** Overrides the configured model provider (tests use a scripted one). Pass null to force the rule-based planner. */
   provider?: LlmProvider | null;
+  /** Overrides how long the model loop may run before it is abandoned (tests). */
+  loopLimitMs?: number;
 }
 
 export async function runPlan(rawBody: PlanRequestBody, config: AppConfig, emit: (e: PlanEvent) => void, deps: RunDeps = {}): Promise<void> {
@@ -175,14 +201,23 @@ export async function runPlan(rawBody: PlanRequestBody, config: AppConfig, emit:
   const prior = (req.history?.memo ?? undefined) as Memo | undefined;
   const key = groupKey(req.group);
   const sameGroup = prior?.groupKey === key;
-  const ctx = makeContext({
+  // Events from the model loop pass through this gate; if the loop is
+  // abandoned (see LOOP_LIMIT_MS) anything it does later is dropped.
+  let loopLive = true;
+  const gatedEmit = (e: PlanEvent) => {
+    if (loopLive) emit(e);
+  };
+  const baseArgs = {
     qloo,
     group: req.group,
     slots: req.slots,
     location: located ? req.location?.trim() || "New York City" : undefined,
     weights,
     vetoes: req.vetoes ?? {},
-    emit,
+  };
+  let ctx = makeContext({
+    ...baseArgs,
+    emit: gatedEmit,
     taste: sameGroup ? prior?.taste : undefined,
     // Only a model-driven follow-up can reuse earlier shortlists (it re-plans what changed).
     slotResults: provider && sameGroup && req.message ? { ...(prior?.slotResults ?? {}) } : {},
@@ -217,45 +252,61 @@ export async function runPlan(rawBody: PlanRequestBody, config: AppConfig, emit:
     const session = provider.session(SYSTEM_PROMPT, TOOL_SPECS, priorMessages);
     session.addUser(priorMessages ? followUpMessage(req, req.slots) : firstMessage({ ...req, notes: [req.notes, req.message].filter(Boolean).join(". ") }, req.slots, weights, ctx.nameOf));
     const started = Date.now();
-    try {
-      for (let stepNo = 0; stepNo < config.llm.maxSteps; stepNo++) {
-        if (Date.now() - started > DEADLINE_MS) break;
-        const remaining = BUDGET_MS - (Date.now() - started);
-        // Model turns can take several seconds; show them as steps so the wait is visible.
-        const turnId = `llm${stepNo}-${started}`;
-        const turnLabel = stepNo === 0 ? "Reading the request" : ctx.plan ? "Writing the reply" : "Weighing the options";
-        emit({ type: "step", id: turnId, label: turnLabel, detail: provider.model, state: "running" });
-        const turnStarted = Date.now();
-        const turn = await session.turn(remaining);
-        console.log(`[agent] turn ${stepNo} ${Date.now() - turnStarted} ms, ${turn.toolCalls.length} tool calls, stop=${turn.stop}`);
-        const note = turn.thinking.find((t) => t.trim())?.trim().replace(/\s+/g, " ");
-        emit({ type: "step", id: turnId, label: turnLabel, detail: note ? (note.length > 110 ? `${note.slice(0, 107)}…` : note) : provider.model, state: "done" });
-        for (const t of turn.thinking) emit({ type: "thinking", text: t.slice(0, 600) });
-        if (turn.stop === "refusal") {
-          emit({ type: "error", message: "The model declined this request, so the built-in planner took over." });
-          break;
-        }
-        if (turn.toolCalls.length) {
-          const hadPlan = ctx.plan;
-          session.addToolResults(await executeAll(ctx, turn.toolCalls));
-          // finalize_plan carries the reply, so a published plan ends the run
-          // without another model call.
-          if (ctx.plan && ctx.plan !== hadPlan) {
-            emit({ type: "message", text: ctx.reply ?? turn.text ?? "Here's the plan." });
-            usedModel = true;
+    const loopCtx = ctx; // the loop keeps this context even if the run moves on
+    const loop = (async () => {
+      try {
+        for (let stepNo = 0; stepNo < config.llm.maxSteps; stepNo++) {
+          if (Date.now() - started > DEADLINE_MS) break;
+          const remaining = BUDGET_MS - (Date.now() - started);
+          // Model turns can take several seconds; show them as steps so the wait is visible.
+          const turnId = `llm${stepNo}-${started}`;
+          const turnLabel = stepNo === 0 ? "Reading the request" : loopCtx.plan ? "Writing the reply" : "Weighing the options";
+          emit({ type: "step", id: turnId, label: turnLabel, detail: provider.model, state: "running" });
+          const turnStarted = Date.now();
+          const turn = await session.turn(remaining);
+          console.log(`[agent] turn ${stepNo} ${Date.now() - turnStarted} ms, ${turn.toolCalls.length} tool calls, stop=${turn.stop}`);
+          const note = turn.thinking.find((t) => t.trim())?.trim().replace(/\s+/g, " ");
+          emit({ type: "step", id: turnId, label: turnLabel, detail: note ? (note.length > 110 ? `${note.slice(0, 107)}…` : note) : provider.model, state: "done" });
+          for (const t of turn.thinking) emit({ type: "thinking", text: t.slice(0, 600) });
+          if (turn.stop === "refusal") {
+            emit({ type: "error", message: "The model declined this request, so the built-in planner took over." });
             break;
           }
-          continue;
+          if (turn.toolCalls.length) {
+            const hadPlan = loopCtx.plan;
+            session.addToolResults(await executeAll(loopCtx, turn.toolCalls));
+            // finalize_plan carries the reply, so a published plan ends the run
+            // without another model call.
+            if (loopCtx.plan && loopCtx.plan !== hadPlan) {
+              emit({ type: "message", text: loopCtx.reply ?? turn.text ?? "Here's the plan." });
+              usedModel = true;
+              break;
+            }
+            continue;
+          }
+          if (turn.text) emit({ type: "message", text: turn.text });
+          usedModel = true;
+          break;
         }
-        if (turn.text) emit({ type: "message", text: turn.text });
-        usedModel = true;
-        break;
+        history = { provider: provider.name, model: provider.model, messages: session.messages };
+      } catch (error) {
+        console.error("[agent] model loop failed", error);
+        const message = error instanceof LlmUnavailableError ? error.message : `Agent error: ${(error as Error).message}`;
+        gatedEmit({ type: "status", status: { qloo: qloo.mode, llm: "rule-based", notice: `${message} Using the built-in planner instead.` } });
       }
-      history = { provider: provider.name, model: provider.model, messages: session.messages };
-    } catch (error) {
-      console.error("[agent] model loop failed", error);
-      const message = error instanceof LlmUnavailableError ? error.message : `Agent error: ${(error as Error).message}`;
-      emit({ type: "status", status: { qloo: qloo.mode, llm: "rule-based", notice: `${message} Using the built-in planner instead.` } });
+    })();
+    const finished = await Promise.race([loop.then(() => true), sleep(deps.loopLimitMs ?? LOOP_LIMIT_MS).then(() => false)]);
+    if (!finished) {
+      // Never leave a judge waiting: drop the stuck loop and finish from what
+      // has already been scored (or with the built-in planner).
+      console.error(`[agent] model loop exceeded ${LOOP_LIMIT_MS} ms; finishing without it`);
+      loopLive = false;
+      const scored = ctx;
+      ctx = makeContext({ ...baseArgs, emit, taste: scored.taste, slotResults: { ...scored.slotResults } });
+      for (const slot of scored.freshSlots) ctx.freshSlots.add(slot);
+      usedModel = false;
+      history = undefined;
+      emit({ type: "status", status: { qloo: qloo.mode, llm: "rule-based", notice: "The agent took too long, so the built-in planner finished this plan from the options already scored." } });
     }
   }
 
@@ -272,6 +323,7 @@ export async function runPlan(rawBody: PlanRequestBody, config: AppConfig, emit:
   }
 
   const memo: Memo = { groupKey: key, taste: ctx.taste, slotResults: ctx.slotResults, messages: followUps };
-  emit({ type: "history", history: { provider: history?.provider ?? "rule-based", model: history?.model ?? "rule-based", messages: history?.messages ?? [], memo } });
+  const kept = loopLive ? history : undefined;
+  emit({ type: "history", history: { provider: kept?.provider ?? "rule-based", model: kept?.model ?? "rule-based", messages: kept?.messages ?? [], memo } });
   emit({ type: "done" });
 }

@@ -20,9 +20,9 @@ beforeAll(async () => {
   ];
 });
 
-async function collect(body: Parameters<typeof runPlan>[0], provider?: LlmProvider | null) {
+async function collect(body: Parameters<typeof runPlan>[0], provider?: LlmProvider | null, loopLimitMs?: number) {
   const events: PlanEvent[] = [];
-  await runPlan(body, config, (e) => events.push(e), { provider });
+  await runPlan(body, config, (e) => events.push(e), { provider, loopLimitMs });
   return events;
 }
 
@@ -166,6 +166,27 @@ describe("model-driven agent loop", () => {
     const events = await collect({ group, slots: ["movie"] }, broken);
     expect(events.some((e) => e.type === "status" && /rejected/.test(e.status.notice ?? ""))).toBe(true);
     expect(events.some((e) => e.type === "plan")).toBe(true);
+  });
+});
+
+describe("watchdog", () => {
+  it("abandons a model call that never returns and still publishes a plan", async () => {
+    const stuck: LlmProvider = {
+      name: "stuck",
+      model: "x",
+      session: () => ({
+        messages: [],
+        addUser() {},
+        addToolResults() {},
+        turn: () => new Promise<TurnResult>(() => {}),
+      }),
+    };
+    const events = await collect({ group, slots: ["movie"] }, stuck, 200);
+    expect(events.some((e) => e.type === "status" && /took too long/.test(e.status.notice ?? ""))).toBe(true);
+    expect(events.some((e) => e.type === "plan")).toBe(true);
+    const history = events.find((e) => e.type === "history");
+    expect(history && history.type === "history" && history.history.messages).toEqual([]);
+    expect(events.at(-1)?.type).toBe("done");
   });
 });
 
