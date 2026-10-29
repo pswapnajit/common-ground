@@ -1298,3 +1298,22 @@ textarea.field {
 .add-row {
   color: var(--accent);
 }
+
+/* Sample groups: make the call to action obvious. */
+.try {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 56px;
+  min-height: 30px;
+  padding: 4px 14px;
+  border-radius: 15px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+}
+button.row:hover .try {
+  filter: brightness(1.08);
+}

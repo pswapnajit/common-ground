@@ -308,6 +308,22 @@ export default function App() {
                   fairest to the whole group.
                 </p>
               </div>
+              <section className="section" aria-labelledby="samples-title">
+                <div className="section-header">
+                  <h2 id="samples-title">Try a sample group</h2>
+                </div>
+                <div className="group">
+                  {SAMPLES.map((s) => (
+                    <button key={s.id} type="button" className="row" disabled={!!loadingSample || run.running} onClick={() => loadSample(s)}>
+                      <span className="row-main">
+                        <span className="row-title">{s.title}</span>
+                        <span className="row-sub">{s.blurb}</span>
+                      </span>
+                      <span className="try">{loadingSample === s.id ? <span className="spinner" /> : "Try"}</span>
+                    </button>
+                  ))}
+                </div>
+              </section>
               <section className="section" aria-label="How it works">
                 <div className="group">
                   <div className="row-block feature">
@@ -337,22 +353,6 @@ export default function App() {
                       <div className="feature-text">No pick lands near the bottom of anyone's list, and every trade-off is explained.</div>
                     </span>
                   </div>
-                </div>
-              </section>
-              <section className="section" aria-labelledby="samples-title">
-                <div className="section-header">
-                  <h2 id="samples-title">Sample Groups</h2>
-                </div>
-                <div className="group">
-                  {SAMPLES.map((s) => (
-                    <button key={s.id} type="button" className="row" disabled={!!loadingSample || run.running} onClick={() => loadSample(s)}>
-                      <span className="row-main">
-                        <span className="row-title">{s.title}</span>
-                        <span className="row-sub">{s.blurb}</span>
-                      </span>
-                      <span className="row-accessory">{loadingSample === s.id ? <span className="spinner" /> : <Icon.chevron size={16} />}</span>
-                    </button>
-                  ))}
                 </div>
               </section>
             </div>
