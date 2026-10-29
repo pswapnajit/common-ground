@@ -12,6 +12,8 @@ export type QlooParams = Record<string, ParamValue>;
 export interface TransportResponse {
   status: number;
   body: unknown;
+  /** Size of the raw response in bytes, when known (used to bound the cache). */
+  size?: number;
 }
 
 export interface QlooTransport {
@@ -71,7 +73,7 @@ export function liveTransport(opts: { apiKey: string; baseUrl: string; timeoutMs
             await sleep(Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter * 1000, 4000) : 400 * 2 ** attempt);
             continue;
           }
-          return { status: res.status, body };
+          return { status: res.status, body, size: text.length };
         } catch (error) {
           lastError = error;
           if (attempt < attempts - 1) await sleep(300);
@@ -90,7 +92,12 @@ interface CacheEntry {
 }
 
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
-const CACHE_MAX = 600;
+const CACHE_MAX = 300;
+// Film records carry dozens of localised titles, so responses can be large;
+// keep the private cache well under the function's memory.
+const CACHE_MAX_BYTES = 120 * 1024 * 1024;
+const CACHE_MAX_ENTRY = 2 * 1024 * 1024;
+let cacheBytes = 0;
 const cache = new Map<string, CacheEntry>();
 const inflight = new Map<string, Promise<TransportResponse>>();
 let receiptCounter = 0;
@@ -98,6 +105,7 @@ let receiptCounter = 0;
 export function clearQlooCache() {
   cache.clear();
   inflight.clear();
+  cacheBytes = 0;
 }
 
 function cacheGet(key: string): TransportResponse | undefined {
@@ -113,8 +121,17 @@ function cacheGet(key: string): TransportResponse | undefined {
 }
 
 function cacheSet(key: string, value: TransportResponse) {
+  const size = value.size ?? 50_000;
+  if (size > CACHE_MAX_ENTRY) return;
+  const old = cache.get(key);
+  if (old) cacheBytes -= old.value.size ?? 50_000;
   cache.set(key, { value, expires: Date.now() + CACHE_TTL_MS });
-  while (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value as string);
+  cacheBytes += size;
+  while (cache.size > CACHE_MAX || cacheBytes > CACHE_MAX_BYTES) {
+    const oldestKey = cache.keys().next().value as string;
+    cacheBytes -= cache.get(oldestKey)?.value.size ?? 50_000;
+    cache.delete(oldestKey);
+  }
 }
 
 export interface InsightsResult {

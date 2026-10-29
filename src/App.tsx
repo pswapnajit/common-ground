@@ -139,7 +139,12 @@ export default function App() {
       } catch (error) {
         if ((error as Error).name !== "AbortError") setRun((r) => ({ ...r, error: (error as Error).message }));
       } finally {
-        setRun((r) => (r.running ? { ...r, running: false, endedAt: Date.now() } : r));
+        // Still "running" here means the stream ended without its final event.
+        setRun((r) =>
+          r.running
+            ? { ...r, running: false, endedAt: Date.now(), error: r.error ?? "The connection dropped before the plan was finished. Please try again." }
+            : r,
+        );
       }
     },
     [onEvent],

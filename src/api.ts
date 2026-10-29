@@ -29,7 +29,8 @@ export async function streamPlan(body: PlanRequestBody, onEvent: (e: PlanEvent) 
   try {
     await readPlanStream(body, onEvent, quiet.signal, () => (last = Date.now()));
   } catch (error) {
-    if (quiet.signal.aborted && !signal?.aborted) throw new Error("The server stopped responding before the plan was finished. Please try again.");
+    if (signal?.aborted) throw error;
+    if (quiet.signal.aborted || error instanceof TypeError) throw new Error("The connection dropped before the plan was finished. Please try again.");
     throw error;
   } finally {
     clearInterval(watchdog);

@@ -10,6 +10,15 @@ import { allow } from "./rateLimit.js";
 
 const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" };
 
+// A stray rejection or throw must not take down a warm function that is
+// streaming other people's plans; log it so it shows in the host's logs.
+const g = globalThis as { __cgHandlers?: boolean };
+if (!g.__cgHandlers) {
+  g.__cgHandlers = true;
+  process.on("unhandledRejection", (reason) => console.error("[unhandledRejection]", reason));
+  process.on("uncaughtException", (error) => console.error("[uncaughtException]", error));
+}
+
 function json(body: unknown, status = 200, extra: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...JSON_HEADERS, ...extra } });
 }
@@ -93,16 +102,29 @@ export async function handlePlan(request: Request): Promise<Response> {
       };
       // Keep proxies from closing a quiet connection while Qloo or the model works.
       const heartbeat = setInterval(() => {
-        if (!closed) controller.enqueue(encoder.encode("\n"));
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode("\n"));
+        } catch {
+          // The client went away: a throw here would be uncaught and kill the function.
+          closed = true;
+        }
       }, 10_000);
+      const started = Date.now();
       try {
         await runPlan(body, config, emit);
+        console.log(`[plan] done in ${Date.now() - started} ms`);
       } catch (error) {
+        console.error(`[plan] failed after ${Date.now() - started} ms`, error);
         emit({ type: "error", message: (error as Error).message || "Something went wrong" });
         emit({ type: "done" });
       } finally {
         clearInterval(heartbeat);
-        if (!closed) controller.close();
+        try {
+          if (!closed) controller.close();
+        } catch {
+          /* already closed */
+        }
         closed = true;
       }
     },

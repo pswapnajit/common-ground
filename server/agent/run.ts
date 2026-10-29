@@ -225,7 +225,9 @@ export async function runPlan(rawBody: PlanRequestBody, config: AppConfig, emit:
         const turnId = `llm${stepNo}-${started}`;
         const turnLabel = stepNo === 0 ? "Reading the request" : ctx.plan ? "Writing the reply" : "Weighing the options";
         emit({ type: "step", id: turnId, label: turnLabel, detail: provider.model, state: "running" });
+        const turnStarted = Date.now();
         const turn = await session.turn(remaining);
+        console.log(`[agent] turn ${stepNo} ${Date.now() - turnStarted} ms, ${turn.toolCalls.length} tool calls, stop=${turn.stop}`);
         const note = turn.thinking.find((t) => t.trim())?.trim().replace(/\s+/g, " ");
         emit({ type: "step", id: turnId, label: turnLabel, detail: note ? (note.length > 110 ? `${note.slice(0, 107)}…` : note) : provider.model, state: "done" });
         for (const t of turn.thinking) emit({ type: "thinking", text: t.slice(0, 600) });
@@ -251,6 +253,7 @@ export async function runPlan(rawBody: PlanRequestBody, config: AppConfig, emit:
       }
       history = { provider: provider.name, model: provider.model, messages: session.messages };
     } catch (error) {
+      console.error("[agent] model loop failed", error);
       const message = error instanceof LlmUnavailableError ? error.message : `Agent error: ${(error as Error).message}`;
       emit({ type: "status", status: { qloo: qloo.mode, llm: "rule-based", notice: `${message} Using the built-in planner instead.` } });
     }
