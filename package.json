@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.131.0",
+    "@vercel/functions": "3.10.1",
     "zod": "4.6.5"
   },
   "devDependencies": {

@@ -6,6 +6,7 @@ import { runPlan } from "../agent/run.js";
 import { loadConfig } from "../config.js";
 import { URN_BY_KIND } from "../qloo/normalize.js";
 import { qlooFor } from "../qloo/index.js";
+import { waitUntil } from "@vercel/functions";
 import { allow } from "./rateLimit.js";
 
 const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" };
@@ -89,46 +90,52 @@ export async function handlePlan(request: Request): Promise<Response> {
   }
 
   const encoder = new TextEncoder();
+  let controllerRef: ReadableStreamDefaultController<Uint8Array> | undefined;
+  let closed = false;
   const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      let closed = false;
-      const emit = (event: PlanEvent) => {
-        if (closed) return;
-        try {
-          controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
-        } catch {
-          closed = true;
-        }
-      };
-      // Keep proxies from closing a quiet connection while Qloo or the model works.
-      const heartbeat = setInterval(() => {
-        if (closed) return;
-        try {
-          controller.enqueue(encoder.encode("\n"));
-        } catch {
-          // The client went away: a throw here would be uncaught and kill the function.
-          closed = true;
-        }
-      }, 10_000);
-      const started = Date.now();
-      try {
-        await runPlan(body, config, emit);
-        console.log(`[plan] done in ${Date.now() - started} ms, rss ${Math.round(process.memoryUsage().rss / 1048576)} MB`);
-      } catch (error) {
-        console.error(`[plan] failed after ${Date.now() - started} ms`, error);
-        emit({ type: "error", message: (error as Error).message || "Something went wrong" });
-        emit({ type: "done" });
-      } finally {
-        clearInterval(heartbeat);
-        try {
-          if (!closed) controller.close();
-        } catch {
-          /* already closed */
-        }
-        closed = true;
-      }
+    start(controller) {
+      controllerRef = controller;
+    },
+    cancel() {
+      closed = true; // the browser went away; keep planning quietly, write nothing
     },
   });
+  const write = (chunk: string) => {
+    if (closed || !controllerRef) return;
+    try {
+      controllerRef.enqueue(encoder.encode(chunk));
+    } catch {
+      closed = true;
+    }
+  };
+  const emit = (event: PlanEvent) => write(`${JSON.stringify(event)}\n`);
+
+  const work = (async () => {
+    // Keep proxies from closing a quiet connection while Qloo or the model works.
+    const heartbeat = setInterval(() => write("\n"), 10_000);
+    const started = Date.now();
+    try {
+      await runPlan(body, config, emit);
+      console.log(`[plan] done in ${Date.now() - started} ms, rss ${Math.round(process.memoryUsage().rss / 1048576)} MB`);
+    } catch (error) {
+      console.error(`[plan] failed after ${Date.now() - started} ms`, error);
+      emit({ type: "error", message: (error as Error).message || "Something went wrong" });
+      emit({ type: "done" });
+    } finally {
+      clearInterval(heartbeat);
+      try {
+        if (!closed) controllerRef?.close();
+      } catch {
+        /* already closed */
+      }
+      closed = true;
+    }
+  })();
+  // The response is returned before planning finishes. On Vercel, waitUntil
+  // keeps the function running until the plan is done; without it the
+  // instance can be frozen mid-plan.
+  if (process.env.VERCEL) waitUntil(work);
+
   return new Response(stream, {
     status: 200,
     headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store", "X-Accel-Buffering": "no" },
