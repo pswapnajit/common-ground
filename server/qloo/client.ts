@@ -4,7 +4,7 @@
 // for every call so the UI can show exactly what was asked of Qloo.
 
 import type { EntityCard, QlooReceipt, TagRef } from "../../shared/types.js";
-import { parseExplainability, resultArray, toEntityCard, toTag } from "./normalize.js";
+import { parseExplainability, resultArray, slimBody, toEntityCard, toTag } from "./normalize.js";
 
 export type ParamValue = string | number | boolean | string[] | undefined | null;
 export type QlooParams = Record<string, ParamValue>;
@@ -64,7 +64,7 @@ export function liveTransport(opts: { apiKey: string; baseUrl: string; timeoutMs
           const text = await res.text();
           let body: unknown = {};
           try {
-            body = text ? JSON.parse(text) : {};
+            body = text ? slimBody(JSON.parse(text)) : {};
           } catch {
             body = { message: text.slice(0, 300) };
           }
@@ -73,7 +73,7 @@ export function liveTransport(opts: { apiKey: string; baseUrl: string; timeoutMs
             await sleep(Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter * 1000, 4000) : 400 * 2 ** attempt);
             continue;
           }
-          return { status: res.status, body, size: text.length };
+          return { status: res.status, body, size: res.status === 200 ? JSON.stringify(body).length : text.length };
         } catch (error) {
           lastError = error;
           if (attempt < attempts - 1) await sleep(300);
@@ -113,6 +113,7 @@ function cacheGet(key: string): TransportResponse | undefined {
   if (!hit) return undefined;
   if (hit.expires < Date.now()) {
     cache.delete(key);
+    cacheBytes -= hit.value.size ?? 50_000;
     return undefined;
   }
   cache.delete(key); // refresh LRU position
@@ -226,7 +227,7 @@ export class Qloo {
         .map((raw) => ({ ...toEntityCard(raw), explain: parseExplainability(raw) }))
         .filter((e) => e.id),
       tags: resultArray(body, "tags").map(toTag).filter((t) => t.id),
-      raw: body,
+      raw: undefined,
     };
   }
 

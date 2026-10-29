@@ -113,7 +113,7 @@ export async function handlePlan(request: Request): Promise<Response> {
       const started = Date.now();
       try {
         await runPlan(body, config, emit);
-        console.log(`[plan] done in ${Date.now() - started} ms`);
+        console.log(`[plan] done in ${Date.now() - started} ms, rss ${Math.round(process.memoryUsage().rss / 1048576)} MB`);
       } catch (error) {
         console.error(`[plan] failed after ${Date.now() - started} ms`, error);
         emit({ type: "error", message: (error as Error).message || "Something went wrong" });

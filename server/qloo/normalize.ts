@@ -198,3 +198,61 @@ export function parseExplainability(raw: Json): Map<string, number> {
   visit(root, 0);
   return out;
 }
+
+// Fields the app reads from an entity. Live responses also carry dozens of
+// localised titles, menus, opening hours and long descriptions; dropping them
+// keeps the private cache and each request's memory small.
+const KEEP_PROPS = [
+  "release_year",
+  "release_date",
+  "publication_year",
+  "image",
+  "geocode",
+  "address",
+  "price_level",
+  "business_rating",
+  "neighborhood",
+  "is_closed",
+  "short_description",
+  "description",
+];
+
+export function slimEntity(raw: Json): Json {
+  const props = asRecord(raw.properties);
+  const slimProps: Json = {};
+  if (props) {
+    for (const k of KEEP_PROPS) if (props[k] !== undefined) slimProps[k] = props[k];
+    if (typeof slimProps.description === "string") slimProps.description = slimProps.description.slice(0, 400);
+    if (typeof slimProps.short_description !== "string") delete slimProps.short_description;
+    const pg = asRecord(props.primary_genre);
+    if (pg) slimProps.primary_genre = { id: pg.id, name: pg.name };
+    const img = asRecord(props.image);
+    if (img) slimProps.image = { url: img.url };
+  }
+  return {
+    entity_id: raw.entity_id,
+    id: raw.id,
+    name: raw.name,
+    type: raw.type,
+    subtype: raw.subtype,
+    types: raw.types,
+    popularity: raw.popularity,
+    disambiguation: raw.disambiguation,
+    properties: slimProps,
+    tags: Array.isArray(raw.tags) ? raw.tags.slice(0, 30) : undefined,
+    query: raw.query,
+  };
+}
+
+/** Returns the response with every entity slimmed (tags-only responses pass through). */
+export function slimBody(body: unknown): unknown {
+  const rec = asRecord(body);
+  if (!rec) return body;
+  const results = rec.results;
+  if (Array.isArray(results)) return { ...rec, results: results.map((r) => (asRecord(r) ? slimEntity(r as Json) : r)) };
+  const inner = asRecord(results);
+  if (inner && Array.isArray(inner.entities)) {
+    return { ...rec, results: { ...inner, entities: inner.entities.map((r: unknown) => (asRecord(r) ? slimEntity(r as Json) : r)) } };
+  }
+  return body;
+}
