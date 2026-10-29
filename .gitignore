@@ -9,3 +9,5 @@ coverage/
 # Live Qloo responses must never be committed (developer guide rule)
 .cache/
 scripts/out/
+# Screenshots show live Qloo results; upload them to Devpost, keep them out of the repo
+submission/screenshots/

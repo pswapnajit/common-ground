@@ -19,12 +19,12 @@ export async function searchEntities(q: string, kind?: EntityKind, signal?: Abor
 
 /** Streams NDJSON events from /api/plan. */
 export async function streamPlan(body: PlanRequestBody, onEvent: (e: PlanEvent) => void, signal?: AbortSignal): Promise<void> {
-  // The server sends a heartbeat every 10 s, so 45 s of silence means it has stopped.
+  // The server sends a heartbeat every 10 s, so 90 s of silence means it has stopped.
   const quiet = new AbortController();
   signal?.addEventListener("abort", () => quiet.abort());
   let last = Date.now();
   const watchdog = setInterval(() => {
-    if (Date.now() - last > 45_000) quiet.abort();
+    if (Date.now() - last > 90_000) quiet.abort();
   }, 5_000);
   try {
     await readPlanStream(body, onEvent, quiet.signal, () => (last = Date.now()));

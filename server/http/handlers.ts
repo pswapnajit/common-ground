@@ -138,6 +138,13 @@ export async function handlePlan(request: Request): Promise<Response> {
 
   return new Response(stream, {
     status: 200,
-    headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store", "X-Accel-Buffering": "no" },
+    // Served as an event stream (one JSON object per line) so proxies don't
+    // compress it: gzip holds small events back until a buffer fills, which
+    // made the page wait in silence during long model turns.
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-store, no-transform",
+      "X-Accel-Buffering": "no",
+    },
   });
 }
